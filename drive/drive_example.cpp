@@ -9,6 +9,8 @@
 #define PERIOD 10000 // us
 #define SIN_FREQ 0.2 // Hz
 
+using namespace YT;
+
 int quit = 0;
 
 void alarm_handler(int signo){};

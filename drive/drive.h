@@ -11,6 +11,7 @@
    will be done automatcally by taking the ConstrolParameter
    structure into account and calculating the relation.
 */
+namespace YT {
 
 struct ControlParameter {
 	int zero_pos;
@@ -41,7 +42,9 @@ private:
 	BBB::GPIO _inb;
 
 	void _init(void);
-	inline int _calculateCommand(int, struct ControlParameter);
+	int _calculateCommand(int, struct ControlParameter);
+};
+
 };
 
 #endif
