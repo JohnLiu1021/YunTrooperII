@@ -1,5 +1,4 @@
 #include "communicator.h"
-#include "ringbuffer.h"
 
 YT::Communicator::Communicator()
 {
@@ -83,6 +82,7 @@ int YT::Communicator::close()
 	if (_sharedData.portFd)
 		::close(_sharedData.portFd);
 	pthread_cancel(_thread);
+	return 0;
 }
 
 int YT::Communicator::flushData()
@@ -131,17 +131,14 @@ void *YT::Communicator::_handle(void *ptr)
 	unsigned char header[2] = {0xF0, 0xFA};
 
 	while(1) {
-		int rd, wr;
-		int ret;
-		bool sending = false;
-
+		int rd, ret;
 		rd = read(s->portFd, localBuffer, PACKET_SIZE);
 
 		if (rd > 0) {
 			ret = Ring::write(&ring, localBuffer, rd);
 			if (ret < 0) {
-				fprintf(stderr, "RingBuffer : Not enough space\n");
-				exit(EXIT_FAILURE);
+				fprintf(stderr, "RingBuffer : Not enough space, clear all data\n");
+				Ring::clear(&ring);
 			}
 			
 			if ((ret = Ring::find(&ring, header, 2, Ring::FROM_TAIL)) >= 0) {
@@ -165,22 +162,6 @@ void *YT::Communicator::_handle(void *ptr)
 			perror("read : portFd");
 		}
 		
-
-		/*
-		pthread_mutex_lock(&(s->mutex));
-		if (rd > 0) {
-			memcpy(s->rawData, localBuffer, PACKET_SIZE);
-			s->Flag_isUpdate = true;
-			for (int i=0; i<YT::PACKET_SIZE; i++) {
-				printf("%X ", localBuffer[i]);
-			}printf("\n");
-		} else if (rd == 0) {
-			printf("Timeout\n");
-		} else {
-			perror("read : portFd");
-		}
-		pthread_mutex_unlock(&(s->mutex));
-		*/
 	}
 	pthread_cleanup_pop(0);
 }

@@ -1,7 +1,11 @@
+/*
+   Pure virtual class of packet type.
+*/
 #ifndef YT_PACKET_H
 #define YT_PACKET_H 1
 
 #include <string.h> // memcpy
+#define PACKET_SIZE 30
 
 namespace YT {
 
@@ -54,6 +58,7 @@ enum PacketType{
 	*/
 	ACK_RESET	= 0x97,
 
+	/* Received Type */
 	TIMEOUT		= 0,
 	ERROR_CMD	= 0xFF,
 	RC_COMMAND	= 0x02,
@@ -66,128 +71,34 @@ enum PacketType{
 	RESET		= 0xDD,
 };
 
-enum Constant {
-	PACKET_SIZE = 30
-};
-
 class Packet {
 public:
-	char speed;
-	char steer;
-	char pathName[255];
-	double latitude;
-	double longitude;
-	double yaw;
-	int pathPointNumber;
-	int statusBit;
+	/* Packing data from data field to rawData array */
+	virtual int packingData() = 0; 
+
+	/* Resolve data from rawData array to data field */
+	virtual PacketType resolveData() = 0;
+
+	struct DataField { 
+		char speed;
+		char steer;
+		char pathName[255];
+		double latitude;
+		double longitude;
+		double yaw;
+		int pathPointNumber;
+		int statusBit;
+		PacketType packetType;
+	} field;
+	
+	/* Raw data array */
 	unsigned char rawData[PACKET_SIZE];
-	PacketType packetType;
-	
-	int packingData()
+
+	void getHeader(unsigned char *buffer, int *size)
 	{
-		_addHeader(rawData);
-
-		switch(packetType) {
-		case ACK_NOK:
-			rawData[2] = 0;
-			rawData[3] = ACK_NOK;
-			break;
-        
-		case ACK_READ_PATH:
-			rawData[2] = 1;
-			rawData[3] = ACK_READ_PATH;
-			rawData[4] = pathPointNumber;
-			break;
-        
-		case ACK_SAVE_PATH:
-			rawData[2] = 1;
-			rawData[3] = ACK_SAVE_PATH;
-			rawData[4] = pathPointNumber;
-			break;
-        
-		case ACK_STATUS:
-			rawData[2] = 25;
-			rawData[3] = ACK_STATUS;
-			memcpy(rawData+4, &(latitude), 8);
-			memcpy(rawData+12, &(longitude), 8);
-			memcpy(rawData+20, &(yaw), 8);
-			rawData[28] = statusBit;
-			break;
-        
-		case ACK_START_NAV:
-			rawData[2] = 1;
-			rawData[3] = ACK_START_NAV;
-			rawData[4] = pathPointNumber;
-			break;
-        
-		case ACK_PAUSE_NAV:
-			rawData[2] = 1;
-			rawData[3] = ACK_PAUSE_NAV;
-			rawData[4] = pathPointNumber;
-			break;
-        
-		case ACK_CLEAR_PATH:
-			rawData[2] = 0;
-			rawData[3] = ACK_CLEAR_PATH;
-			printf("This is it bro!\n");
-			break;
-        
-		case ACK_RESET:
-			rawData[2] = 0;
-			rawData[3] = ACK_RESET;
-			break;
-        
-		default:
-			return -1;
-		}
-
-		_addCheckSum(rawData);
-		return 0;
-	}
-	
-	PacketType resolveData()
-	{
-		if (!_verifyPacket(rawData))
-			return ERROR_CMD;
-
-		switch(rawData[3]) {
-		case TIMEOUT:
-			return TIMEOUT;
-        
-		case ERROR_CMD:
-			return ERROR_CMD;
-        
-		case RC_COMMAND:
-			speed = (char)rawData[4];
-			steer = (char)rawData[5];
-			return RC_COMMAND;
-        
-		case READ_PATH:
-			memcpy(pathName, (char*)(rawData+4), rawData[2]);
-			return READ_PATH;
-        
-		case CLEAR_PATH:
-			return CLEAR_PATH;
-        
-		case SAVE_PATH:
-			memcpy(pathName, (char*)(rawData+6), rawData[2]);
-			return SAVE_PATH;
-        
-		case ASK_STATUS:
-			return ASK_STATUS;
-        
-		case START_NAV:
-			return START_NAV;
-        
-		case PAUSE_NAV:
-			return PAUSE_NAV;
-        
-		case RESET:
-			return RESET;
-        
-		default:
-			return ERROR_CMD;
-		}
+		buffer[0] = 0xF0;
+		buffer[1] = 0xFA;
+		*size = 2;
 	}
 
 protected:
@@ -229,7 +140,6 @@ protected:
 			return (packet[3] == type);
 		return false;
 	}
-	
 };
 
 };	

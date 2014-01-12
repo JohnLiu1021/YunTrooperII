@@ -191,6 +191,8 @@ int Ring::find(struct RingBuffer *ring, const unsigned char *target, int length,
 			}
 			return -1;
 		}
+	} else {
+		return -1;
 	}
 }
 

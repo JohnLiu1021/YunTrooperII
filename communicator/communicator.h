@@ -12,6 +12,7 @@
 #include <cstddef>
 
 #include "packet.h"
+#include "ringbuffer.h"
 
 typedef unsigned char byte;
 
@@ -28,6 +29,7 @@ private:
 		pthread_mutex_t mutex;		// mutex lock for this shared struct
 		byte rawData[PACKET_SIZE];	// storing the data
 		bool Flag_isUpdate;		// indicating whether the data has read by xbee
+		unsigned char packetHeader[2];	// Storing packet header for finding the data
 	};
 	struct _SharedData _sharedData;
 	

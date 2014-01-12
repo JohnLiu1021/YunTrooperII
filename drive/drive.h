@@ -23,6 +23,7 @@ class Drive {
 public:
 	Drive();
 	Drive(struct ControlParameter steer, struct ControlParameter speed);
+	~Drive();
 
 	void setSteerParameter(struct ControlParameter);
 	void setSpeedParameter(struct ControlParameter);

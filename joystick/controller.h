@@ -1,3 +1,6 @@
+#ifndef CONTROLLER_H
+#define CONTROLLER_H 1
+
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -67,4 +70,4 @@ private:
 	uint8_t _axmap[ABS_MAX + 1];
 };
 
-
+#endif

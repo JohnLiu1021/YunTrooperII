@@ -12,6 +12,12 @@ YT::Drive::Drive(struct ControlParameter steer, struct ControlParameter speed)
 	_speedPara = speed;
 }
 
+YT::Drive::~Drive()
+{
+	setSpeed(0);
+	setSteer(0);
+}
+
 void YT::Drive::setSteerParameter(struct ControlParameter para)
 {
 	if (para.range < 0)
