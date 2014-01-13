@@ -9,6 +9,11 @@
 
 namespace YT {
 
+enum HeaderData{
+	HEADER1 = 0xF0,
+	HEADER2 = 0xFA
+};
+
 enum PacketType{
 	/* ACK_NOK : Invalid requirement
 	   Length = 0
@@ -94,18 +99,17 @@ public:
 	/* Raw data array */
 	unsigned char rawData[PACKET_SIZE];
 
-	void getHeader(unsigned char *buffer, int *size)
+	int getHeader(unsigned char *buffer)
 	{
-		buffer[0] = 0xF0;
-		buffer[1] = 0xFA;
-		*size = 2;
+		buffer[0] = HEADER1;
+		buffer[1] = HEADER2;
 	}
 
 protected:
 	void _addHeader(unsigned char *packet)
 	{
-		packet[0] = 0xF0;
-		packet[1] = 0xFA;
+		packet[0] = HEADER1;
+		packet[1] = HEADER2;
 	}
 
 	unsigned char _addCheckSum(unsigned char *packet)
@@ -129,7 +133,7 @@ protected:
 	
 	bool _verifyPacket(unsigned char *packet)
 	{
-		if (packet[0] != 0xF0 || packet[1] != 0xFA)
+		if (packet[0] != HEADER1 || packet[1] != HEADER2)
 			return false;
 		return _verifyCheckSum(packet);
 	}

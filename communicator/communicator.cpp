@@ -128,7 +128,7 @@ void *YT::Communicator::_handle(void *ptr)
 	Ring::RingBuffer ring;
 	Ring::initialize(&ring, 30);
 
-	unsigned char header[2] = {0xF0, 0xFA};
+	unsigned char header[2] = {YT::HEADER1, YT::HEADER2};
 
 	while(1) {
 		int rd, ret;
