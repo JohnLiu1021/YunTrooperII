@@ -108,7 +108,6 @@ YT::PacketType YT::Communicator::readCommand(YT::Packet *packet)
 int YT::Communicator::sendCommand(YT::Packet *packet)
 {
 	packet->packingData();
-	printf("Sending command!\n");
 	tcflush(_sharedData.portFd, TCOFLUSH);
 	int wr = write(_sharedData.portFd, packet->rawData, (packet->rawData[2] + 5));
 	if (wr < 0) {
@@ -126,7 +125,7 @@ void *YT::Communicator::_handle(void *ptr)
 	byte localBuffer[PACKET_SIZE];
 
 	Ring::RingBuffer ring;
-	Ring::initialize(&ring, 30);
+	Ring::initialize(&ring, 256);
 
 	unsigned char header[2] = {YT::HEADER1, YT::HEADER2};
 
@@ -156,8 +155,6 @@ void *YT::Communicator::_handle(void *ptr)
 				s->Flag_isUpdate = true;
 				pthread_mutex_unlock(&(s->mutex));
 			}
-		} else if (rd == 0) {
-			printf("Timeout\n");
 		} else {
 			perror("read : portFd");
 		}

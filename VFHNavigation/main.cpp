@@ -10,6 +10,10 @@
 
 #define EXIT_ERROR(X) {fprintf(stderr, "Error %d occured during "X": %s\n", serial.getLastResult(), xsensResultText(serial.getLastResult())); exit(EXIT_FAILURE);}
 
+#define BODY_WIDTH 200
+#define STEERING_GAIN 1.5
+#define MAX_SPEED 75 
+
 int quit = 0;
 
 BBB::GPIO led1(69, 1);
@@ -91,6 +95,7 @@ void *GPSRead(void *)
 int main(void)
 {
 	sleep(2);
+	/*
 	pid_t pid, sid;
 	pid = fork();
 	if (pid < 0) {
@@ -106,7 +111,7 @@ int main(void)
 	if (sid < 0) {
 		exit(EXIT_FAILURE);
 	}
-
+	*/
 	(void)signal(SIGINT, ctrlchandler);
 	atexit(exitFunc);
 	
@@ -131,17 +136,17 @@ int main(void)
 		return -1;
 	}
 	urg.start_measurement(Urg_driver::Distance);
+	int min_step = urg.min_step();
+	int max_step = urg.max_step();
 
 	double targetOrientation = 0.0;
 	bool flag_startNav = false;
-	int btnCounter = 0;
 	while(!quit) {
 		// Read yaw angle from other thread
 		double yaw;
 		pthread_mutex_lock(&mutex);
 		yaw = GlobalYaw;
 		pthread_mutex_unlock(&mutex);
-
 
 		std::vector<long> data;
 		std::vector<long> reducedData;
@@ -155,22 +160,43 @@ int main(void)
 			return -1;
 		}
 		
-		for (int j=0, count=0; j<=672; j+=8, count+=1) {
+		int density_th = 1000;
+		int densityCounter = 0;
+		int totalStep = 0;
+		// Reducing the number of data and construct Vertor Field Histogram
+		for (int j=urg.step2index(min_step); j<urg.step2index(max_step); j+=4, totalStep++) {
 			if (data[j] > 4000 || data[j] < 20)
 				data[j] = 4000;
-			reducedData.push_back(data[j]);
-			angleIndex.push_back(-117.936 + (count * 2.808));
+			reducedData.push_back(data[j] - BODY_WIDTH);
+			angleIndex.push_back(urg.index2deg(j));
+			if (data[j] <= density_th) {
+				densityCounter++;
+			}
+
+			// Vector Field Contruction formula
 			VFH.push_back(A - (B * data[j]));
 		}
+
 		
 		int sectorStart;
 		int spaceCounter = 0;
 		bool flag_found = false;
 		int B_th = 0;
 		int space_th = 8;
+		size_t j;
 
-		// Construct Vertor Field Histogram
-		for (size_t j=0; j<VFH.size(); j++) {
+		bool flag_obstacleFound = false;
+		for (int j=64; j<=106; j++) { // From -29.5313 to 29.5313 deg
+			if (VFH[j] > B_th) {
+				flag_obstacleFound = true;
+				break;
+			} else {
+				flag_obstacleFound = false;
+			}
+		}
+
+		// Find free sector
+		for (j=0; j<VFH.size(); j++) {
 			if (VFH[j] <= B_th) {
 				if (!flag_found) {
 					flag_found = true;
@@ -180,12 +206,25 @@ int main(void)
 			} else {
 				if (flag_found) {
 					if (spaceCounter >= space_th) {
+						// Start index of the sector
 						sectorIndex.push_back(sectorStart);
+
+						// End index of the sector
 						sectorIndex.push_back(j-1);
+
+						// Sector width
+						sectorIndex.push_back(spaceCounter);
 					}
 					flag_found = false;
 					spaceCounter = 0;
 				}
+			}
+		}
+		if (flag_found) {
+			if (spaceCounter >= space_th) {
+				sectorIndex.push_back(sectorStart);
+				sectorIndex.push_back(j-1);
+				sectorIndex.push_back(spaceCounter);
 			}
 		}
 
@@ -206,37 +245,61 @@ int main(void)
 		if (flag_startNav) {
 			led1.value(1);
 			double target_local = targetOrientation - yaw;
-			double commandAngle = 0.0;
-			
-			std::vector<double> sectorAngle;
-			sectorAngle.clear();
-			for (size_t j=0; j<sectorIndex.size();j+=2) {
-				int startIndex = sectorIndex[j];
-				int endIndex = sectorIndex[j+1];
-				double angle = (angleIndex[startIndex] + angleIndex[endIndex]) / 2;
-				sectorAngle.push_back(angle);
-				
-				//printf("%d:%f to %d:%f\n", startIndex, angleIndex[startIndex], endIndex, angleIndex[endIndex]);
-				//printf("average angle = %f\n", angle);
-			}
-			
-			double min = 129600.0; // 360 * 360
-			for (std::vector<double>::iterator it=sectorAngle.begin(); it!=sectorAngle.end(); it++) {
-				double diff = (target_local - *it);
-				if ((diff*diff) < min) {
-					min = diff * diff;
-					commandAngle = *it;
+			printf("flag_obstacleFound = %d\n", flag_obstacleFound);
+
+			if (flag_obstacleFound) {
+				std::vector<double> sectorAngle;
+				std::vector<long> sectorWidth;
+				sectorAngle.clear();
+				sectorWidth.clear();
+				for (size_t j=0; j<sectorIndex.size();j+=3) {
+					int startIndex = sectorIndex[j];
+					int endIndex = sectorIndex[j+1];
+					int space = sectorIndex[j+2];
+					double angle = (angleIndex[startIndex] + angleIndex[endIndex]) / 2;
+					sectorAngle.push_back(angle);
+					sectorWidth.push_back(space);
 				}
+				
+				double max;
+				double alpha = 0.3;
+				double beta = 0.7;
+				double commandAngle = 0.0;
+				for (size_t i=0; i<sectorAngle.size(); i++) {
+					double d = (target_local - sectorAngle[i]);
+					if (d < 0)
+						d = -d;
+					d = 1.0 - (d / 180);
+						
+					double width = (double)sectorWidth[i] / (double)totalStep;
+					double objVal = (alpha * d) + (beta * width);
+					if (i == 0) {
+						max = objVal;
+						commandAngle = sectorAngle[0];
+					} else {
+						if (objVal > max) {
+							max = objVal;
+							commandAngle = sectorAngle[i];
+						}
+					}
+				}
+                        
+				drive.setSteer(commandAngle * STEERING_GAIN);
+				printf("target angle  = %f\n", commandAngle * STEERING_GAIN);
+				printf("densityCounter = %d\n", densityCounter);
+                        
+				if (sectorAngle.size() == 0) {
+					drive.setSpeed(0);
+				} else {
+					int speedValue = MAX_SPEED - ((densityCounter * MAX_SPEED) / totalStep);
+					drive.setSpeed(speedValue);
+					printf("speedValue = %d\n", speedValue);
+				}
+			} else {
+				int commandAngle = (int)(target_local);
+				drive.setSteer(commandAngle);
+				drive.setSpeed(MAX_SPEED);
 			}
-			//printf("target angle  = %f\n", commandAngle);
-			drive.setSteer(commandAngle);
-
-			if (sectorAngle.size() == 0) {
-				drive.setSpeed(0);
-			}else {
-				drive.setSpeed(50);
-			}
-
 
 		} else {
 			led1.value(0);

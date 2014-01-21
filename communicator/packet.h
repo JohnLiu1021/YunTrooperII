@@ -65,7 +65,6 @@ enum PacketType{
 
 	/* Received Type */
 	TIMEOUT		= 0,
-	ERROR_CMD	= 0xFF,
 	RC_COMMAND	= 0x02,
 	READ_PATH	= 0x06,
 	CLEAR_PATH	= 0x16,
@@ -74,6 +73,9 @@ enum PacketType{
 	START_NAV	= 0xBB,
 	PAUSE_NAV	= 0xB1,
 	RESET		= 0xDD,
+	
+	/* Error Type */
+	ERROR_CMD	= 0xFF,
 };
 
 class Packet {
@@ -87,61 +89,75 @@ public:
 	struct DataField { 
 		char speed;
 		char steer;
-		char pathName[255];
+		char pathName[20];
+		unsigned char statusBit;
+		unsigned char pathPointNumber;
 		double latitude;
 		double longitude;
 		double yaw;
-		int pathPointNumber;
-		int statusBit;
 		PacketType packetType;
 	} field;
 	
 	/* Raw data array */
 	unsigned char rawData[PACKET_SIZE];
 
-	int getHeader(unsigned char *buffer)
-	{
-		buffer[0] = HEADER1;
-		buffer[1] = HEADER2;
-	}
-
 protected:
-	void _addHeader(unsigned char *packet)
+	/* Functions dealing with packet format */
+	inline void addHeader()
 	{
-		packet[0] = HEADER1;
-		packet[1] = HEADER2;
+		rawData[0] = HEADER1;
+		rawData[1] = HEADER2;
 	}
 
-	unsigned char _addCheckSum(unsigned char *packet)
+	inline void addDataNumber(const int number)
 	{
-		unsigned char N = packet[2];
+		rawData[2] = (unsigned char) number;
+	}
+
+	inline int getDataNumber()
+	{
+		return rawData[2];
+	}
+
+	inline void addPacketType(PacketType type)
+	{
+		rawData[3] = (unsigned char) type;
+	}
+
+	inline unsigned char addCheckSum()
+	{
+		unsigned char N = rawData[2];
 		unsigned char sum = 0;
 		for (int i=0; i<(N+4); i++)
-			sum += packet[i];
-		packet[N+4] = sum;
+			sum += rawData[i];
+		rawData[N+4] = sum;
 		return sum;
 	}
 
-	bool _verifyCheckSum(unsigned char *packet)
+	inline bool verifyCheckSum()
 	{
-		unsigned char N = packet[2];
+		unsigned char N = rawData[2];
 		unsigned char sum = 0;
 		for (int i=0; i<(N+4); i++)
-			sum += packet[i];
-		return (packet[N+4] == sum);
+			sum += rawData[i];
+		return (rawData[N+4] == sum);
 	}
 	
-	bool _verifyPacket(unsigned char *packet)
+	inline unsigned char verifyPacket()
 	{
-		if (packet[0] != HEADER1 || packet[1] != HEADER2)
-			return false;
-		return _verifyCheckSum(packet);
+		if (rawData[0] != HEADER1 || rawData[1] != HEADER2)
+			return ERROR_CMD;
+
+		if (verifyCheckSum()) 
+			return rawData[3];
+		else 
+			return ERROR_CMD;
 	}
 
-	bool _verifyPacket(unsigned char *packet, PacketType type)
+	inline bool verifyPacket(PacketType type)
 	{
-		if (_verifyPacket(packet))
-			return (packet[3] == type);
+		if (verifyPacket())
+			return (rawData[3] == type);
 		return false;
 	}
 };
