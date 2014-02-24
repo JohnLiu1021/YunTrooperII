@@ -55,14 +55,14 @@ void YT::Drive::setSteer(int value)
 void YT::Drive::setSpeed(int value)
 {
 	int ret = _calculateCommand(value, _speedPara);
-	if (value > 0) {
+	if (ret > 0) {
+		_speed.setDutyNs(ret);
 		_ina.value(1);
 		_inb.value(0);
-		_speed.setDutyNs(ret);
-	} else if (value < 0) {
+	} else if (ret < 0) {
+		_speed.setDutyNs(-ret);
 		_ina.value(0);
 		_inb.value(1);
-		_speed.setDutyNs(-ret);
 	} else {
 		_ina.value(0);
 		_inb.value(0);
@@ -82,14 +82,14 @@ void YT::Drive::_init(void)
 
 	_steerPara.zero_pos = 1500000;
 	_steerPara.range = 300000;
-	_steerPara.deadzone = 2;
+	_steerPara.deadzone = 10;
 
 	_speedPara.zero_pos = 0;
 	_speedPara.range = 300000;
-	_speedPara.deadzone = 2;
+	_speedPara.deadzone = 10;
 }
 
-int YT::Drive::_calculateCommand(int value, struct ControlParameter para)
+inline int YT::Drive::_calculateCommand(int value, struct ControlParameter para)
 {
 	if (value > 100)
 		value = 100;

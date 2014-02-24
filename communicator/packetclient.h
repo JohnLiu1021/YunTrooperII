@@ -11,54 +11,38 @@ public:
 	virtual int packingData()
 	{
 		addHeader();
-
 		switch(field.packetType) {
+
+		case ACK_OK:
+			addDataNumber(3);
+			addPacketType(ACK_OK);
+			rawData[4] = field.statusBit;
+			rawData[5] = field.pathPointNumber;
+			rawData[6] = (unsigned char)field.totalPathPointNumber;
+			break;
+        
 		case ACK_NOK:
 			addDataNumber(0);
 			addPacketType(ACK_NOK);
 			break;
         
-		case ACK_READ_PATH:
-			addDataNumber(1);
-			addPacketType(ACK_READ_PATH);
-			rawData[4] = field.pathPointNumber;
-			break;
-        
-		case ACK_SAVE_PATH:
-			addDataNumber(1);
-			addPacketType(ACK_SAVE_PATH);
-			rawData[4] = field.pathPointNumber;
-			break;
-        
 		case ACK_STATUS:
-			addDataNumber(25);
+			addDataNumber(26);
 			addPacketType(ACK_STATUS);
 			memcpy(rawData+4, &(field.latitude), 8);
 			memcpy(rawData+12, &(field.longitude), 8);
 			memcpy(rawData+20, &(field.yaw), 8);
 			rawData[28] = field.statusBit;
+			rawData[29] = (unsigned char)field.totalPathPointNumber;
 			break;
         
-		case ACK_START_NAV:
-			addDataNumber(1);
-			addPacketType(ACK_START_NAV);
-			rawData[4] = field.pathPointNumber;
-			break;
-        
-		case ACK_PAUSE_NAV:
-			addDataNumber(1);
-			addPacketType(ACK_PAUSE_NAV);
-			rawData[4] = field.pathPointNumber;
-			break;
-        
-		case ACK_CLEAR_PATH:
-			addDataNumber(0);
-			addPacketType(ACK_CLEAR_PATH);
-			break;
-        
-		case ACK_RESET:
-			addDataNumber(0);
-			addPacketType(ACK_RESET);
+		case ACK_SHOW_PATH:
+			addDataNumber(18);
+			addPacketType(ACK_SHOW_PATH);
+			rawData[4] = (unsigned char)field.totalPathPointNumber;
+			rawData[5] = field.pathPointNumber;
+			memcpy(rawData+6, &(field.latitude), 8);
+			memcpy(rawData+14, &(field.longitude), 8);
 			break;
         
 		default:
@@ -97,23 +81,34 @@ public:
         
 		case SAVE_PATH:
 			field.packetType = SAVE_PATH;
-			memcpy(field.pathName, (char*)(rawData+6), getDataNumber());
+			memcpy(field.pathName, (char*)(rawData+4), getDataNumber());
 			break;
         
 		case ASK_STATUS:
 			field.packetType = ASK_STATUS;
 			break;
         
-		case START_NAV:
-			field.packetType = START_NAV;
-			break;
-        
-		case PAUSE_NAV:
-			field.packetType = PAUSE_NAV;
+		case TOGGLE_NAV:
+			field.packetType = TOGGLE_NAV;
 			break;
         
 		case RESET:
 			field.packetType = RESET;
+			break;
+
+		case SHOW_PATH:
+			field.packetType = SHOW_PATH;
+			break;
+
+		case ADD_PATH:
+			field.packetType = ADD_PATH;
+			memcpy(&(field.latitude), rawData+4, 8);
+			memcpy(&(field.longitude), rawData+12, 8);
+			break;
+
+		case REMOVE_PATH:
+			field.packetType = REMOVE_PATH;
+			field.pathPointNumber = rawData[4];
 			break;
         
 		default:

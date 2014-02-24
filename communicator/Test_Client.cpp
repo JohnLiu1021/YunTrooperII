@@ -17,7 +17,8 @@ int main(void)
 		PacketType packetType = comm.readCommand(&packet);
 		if (packetType == CLEAR_PATH) {
 			printf("CLEAR!\n");
-			packet.field.packetType = ACK_CLEAR_PATH;
+			packet.field.packetType = ACK_OK;
+			packet.field.totalPathPointNumber = 0;
 			comm.flushData();
 			comm.sendCommand(&packet);
 		} else if (packetType == ASK_STATUS) {
@@ -42,6 +43,15 @@ int main(void)
 			drive.setSpeed(speed);
 			drive.setSteer(steer);
 			printf("speed : %d, steer : %d\n", speed, steer);
+		} else if (packetType == ADD_PATH) {
+			printf("Received lat:%3.6f, lon:%3.6f\n", 
+			packet.field.latitude,
+			packet.field.longitude);
+			packet.field.packetType = ACK_OK;
+			packet.field.totalPathPointNumber = 1;
+			comm.flushData();
+			comm.sendCommand(&packet);
+
 		} else if (packetType == TIMEOUT) {
 			//printf("Timeout...\n");
 		} else if (packetType == ERROR_CMD) {

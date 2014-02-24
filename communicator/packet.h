@@ -5,7 +5,7 @@
 #define YT_PACKET_H 1
 
 #include <string.h> // memcpy
-#define PACKET_SIZE 30
+#define PACKET_SIZE 40
 
 namespace YT {
 
@@ -15,67 +15,116 @@ enum HeaderData{
 };
 
 enum PacketType{
-	/* ACK_NOK : Invalid requirement
+	/* Clent to Host type */
+
+	/* 
+	   Return the number of remaining path point number
+	   Length = 1
+	   packet[4] = Number of path point
+	*/
+	ACK_OK 		= 0x94,
+
+	/* 
+	   ACK_NOK : Invalid requirement
 	   Length = 0
 	*/
 	ACK_NOK 	= 0x99,
 
-	/* ACK_READ_PATH : Return the number of path point read from the file 
-	   Length = 1
-	   packet[4] = Number of path point been read from the file
-	*/
-	ACK_READ_PATH	= 0x91,
-	
-	/* ACK_SAVE_PATH : Return the number of path point being saving in the file
-	   Length = 1
-	   packet[4] = number of path point been saving in the file
-	*/
-	ACK_SAVE_PATH	= 0x92,
-
-	/* ACK_STATUS : Return the status of the sensor
+	/* 
+	   Return the status of the sensor
 	   Length = 24 
 	   packet[4..11] = latitude
 	   packet[12..19] = longitude
 	   packet[20..27] = yaw
 	   packet[28] = Sensor status bit
+	   packet[29] = Totoal path point number
 	*/
 	ACK_STATUS	= 0x93,
 
-	/* ACK_START_NAV : Return the path point number
-	   Length = 1
-	   packet[4] = Number of path point
+	/* 
+	   Sending the latitude and longitude of each path point back to the host
+	   Length = 2 + 8 + 8 = 18
+	   packet[4] = Total number of path point
+	   packet[5] = number of the path point
+	   packet[6..13] = latitude of the path point
+	   packet[14..21] = longitude of the path point
 	*/
-	ACK_START_NAV	= 0x94,
+	ACK_SHOW_PATH	= 0x97,
 
-	/* ACK_PAUSE_NAV : Return the remaining path point number
-	   Length = 1
-	   packet[4] = Number of remaining path point
+	/* Timeout */
+	TIMEOUT		= 0,
+
+	/* From Host to Client Type */
+
+	/* 
+	   Remote control command
+	   Length = 2
+	   packet[4] = speed command (from -100 to 100)
+	   packet[5] = steer command (from -100 to 100)
 	*/
-	ACK_PAUSE_NAV	= 0x95,
+	RC_COMMAND	= 0x02,
 
-	/* ACK_CLEAR_PATH: Return clear ok
+	/* 
+	   Ask Yun Trooper II to read the path from a specific file name
+	   Length = depend on the length of file name 
+	   packet[4..N] = file name
+	*/
+	READ_PATH	= 0x06,
+
+	/* 
+	   Clear all path points
 	   Length = 0
 	*/
-	ACK_CLEAR_PATH	= 0x96,
-
-	/* ACK_RESET : Reset the program
-	   Length = 0;
-	*/
-	ACK_RESET	= 0x97,
-
-	/* Received Type */
-	TIMEOUT		= 0,
-	RC_COMMAND	= 0x02,
-	READ_PATH	= 0x06,
 	CLEAR_PATH	= 0x16,
+
+	/* 
+	   Save current path points to a specific file
+	   Legnth = depend on the length of file name
+	   packet[4..N] = file name
+	*/
 	SAVE_PATH	= 0x26,
+
+	/* 
+	   Asking for status
+	   Length = 0
+	*/
 	ASK_STATUS	= 0x1A,
-	START_NAV	= 0xBB,
-	PAUSE_NAV	= 0xB1,
-	RESET		= 0xDD,
+
+	/* 
+	   Toggle navigation
+	   Length = 0
+	*/
+	TOGGLE_NAV	= 0x1B,
+
+	/* 
+	   Reset Yun Trooper II
+	   Length = 0
+	*/
+	RESET		= 0xAA,
+
+	/* 
+	   Show all path point
+	   Length = 0
+	*/
+	SHOW_PATH	= 0xBB,
+
+	/* 
+	   Adding path point from the command
+	   Length = 16
+	   packet[4..11] = latitude
+	   packet[12..19] = longitude
+	*/
+	ADD_PATH	= 0xCC,
+
+	/* 
+	   Remove specific path point number from the path point set
+	   Length = 1
+	   packet[4] = number of path point
+	*/
+	REMOVE_PATH	= 0xDD,
 	
 	/* Error Type */
-	ERROR_CMD	= 0xFF,
+	ERROR_CMD	= 0xFF
 };
 
 class Packet {
@@ -90,8 +139,9 @@ public:
 		char speed;
 		char steer;
 		char pathName[20];
+		int totalPathPointNumber;
+		int pathPointNumber;
 		unsigned char statusBit;
-		unsigned char pathPointNumber;
 		double latitude;
 		double longitude;
 		double yaw;

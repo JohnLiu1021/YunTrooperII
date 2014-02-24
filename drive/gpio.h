@@ -21,12 +21,14 @@ public:
 	GPIO();
 	GPIO(int gpioNumber);
 	GPIO(int gpioNumber, int direction);
+	~GPIO();
 
 	int open(int gpioNumber, int dir);
 	int setDirection(int dir);
 	int setEdge(const char *edge);
 	int value();
 	int value(int level);
+	int toggle();
 
 protected:
 	int getFd();
@@ -38,7 +40,7 @@ private:
 	int _gpioNumber;
 	char _valuePath[40];
 	int _valueFd;
-
+	bool _state;
 };
 
 };

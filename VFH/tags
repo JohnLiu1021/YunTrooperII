@@ -1,0 +1,114 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+ALPHA	main.cpp	11;"	d	file:
+BETA	main.cpp	12;"	d	file:
+BODY_WIDTH	main.cpp	14;"	d	file:
+CC	Makefile	/^CC=arm-unknown-linux-gnueabi-g++$/;"	m
+CFLAGS	Makefile	/^CFLAGS=-I\/usr\/local\/include\/urg_cpp -I\/home\/john\/Documents\/Program_YunTrooperII -Wall$/;"	m
+EXIT_ERROR	main.cpp	9;"	d	file:
+GPSRead	main.cpp	/^void *GPSRead(void *)$/;"	f	signature:(void *)
+GlobalYaw	main.cpp	/^double GlobalYaw;$/;"	v
+LFLAGS	Makefile	/^LFLAGS=-lpthread -lurg_cpp$/;"	m
+MAX_SPEED	main.cpp	16;"	d	file:
+SKIP_INDEX	main.cpp	13;"	d	file:
+STEERING_GAIN	main.cpp	15;"	d	file:
+Sector	vfh.h	/^	struct Sector {$/;"	s	class:VFH	access:public
+VFH	vfh.cpp	/^VFH::VFH()$/;"	f	class:VFH	signature:()
+VFH	vfh.h	/^	VFH();$/;"	p	class:VFH	access:public	signature:()
+VFH	vfh.h	/^class VFH {$/;"	c
+VFH::Sector	vfh.h	/^	struct Sector {$/;"	s	class:VFH	access:public
+VFH::Sector::angle	vfh.h	/^		double angle;$/;"	m	struct:VFH::Sector	access:public
+VFH::Sector::width	vfh.h	/^		int width;$/;"	m	struct:VFH::Sector	access:public
+VFH::VFH	vfh.cpp	/^VFH::VFH()$/;"	f	class:VFH	signature:()
+VFH::VFH	vfh.h	/^	VFH();$/;"	p	class:VFH	access:public	signature:()
+VFH::_VFHThreshold	vfh.h	/^	int _VFHThreshold;$/;"	m	class:VFH	access:private
+VFH::_angleVector	vfh.h	/^	std::vector<double> _angleVector;$/;"	m	class:VFH	access:private
+VFH::_constA	vfh.h	/^	int _constA;$/;"	m	class:VFH	access:private
+VFH::_constB	vfh.h	/^	int _constB;$/;"	m	class:VFH	access:private
+VFH::_densityCounter	vfh.h	/^	int _densityCounter;$/;"	m	class:VFH	access:private
+VFH::_densityThreshold	vfh.h	/^	int _densityThreshold;$/;"	m	class:VFH	access:private
+VFH::_detectionDistance	vfh.h	/^	int _detectionDistance;$/;"	m	class:VFH	access:private
+VFH::_detectionRange	vfh.h	/^	double _detectionRange;$/;"	m	class:VFH	access:private
+VFH::_detectionRangeLowerIndex	vfh.h	/^	int _detectionRangeLowerIndex;$/;"	m	class:VFH	access:private
+VFH::_detectionRangeUpperIndex	vfh.h	/^	int _detectionRangeUpperIndex;$/;"	m	class:VFH	access:private
+VFH::_distanceVector	vfh.h	/^	std::vector<long> _distanceVector;$/;"	m	class:VFH	access:private
+VFH::_spaceThreshold	vfh.h	/^	int _spaceThreshold;$/;"	m	class:VFH	access:private
+VFH::_totalStep	vfh.h	/^	int _totalStep;$/;"	m	class:VFH	access:private
+VFH::getDensity	vfh.cpp	/^double VFH::getDensity()$/;"	f	class:VFH	signature:()
+VFH::getDensity	vfh.h	/^	double getDensity();$/;"	p	class:VFH	access:public	signature:()
+VFH::getDensityThreshold	vfh.cpp	/^int VFH::getDensityThreshold()$/;"	f	class:VFH	signature:()
+VFH::getDensityThreshold	vfh.h	/^	int getDensityThreshold();$/;"	p	class:VFH	access:public	signature:()
+VFH::getDetectionRange	vfh.cpp	/^double VFH::getDetectionRange()$/;"	f	class:VFH	signature:()
+VFH::getDetectionRange	vfh.h	/^	double getDetectionRange();$/;"	p	class:VFH	access:public	signature:()
+VFH::getSpaceThreshold	vfh.cpp	/^int VFH::getSpaceThreshold()$/;"	f	class:VFH	signature:()
+VFH::getSpaceThreshold	vfh.h	/^	int getSpaceThreshold();$/;"	p	class:VFH	access:public	signature:()
+VFH::getTotalStep	vfh.cpp	/^int VFH::getTotalStep()$/;"	f	class:VFH	signature:()
+VFH::getTotalStep	vfh.h	/^	int getTotalStep();$/;"	p	class:VFH	access:public	signature:()
+VFH::obstacleDetected	vfh.cpp	/^bool VFH::obstacleDetected()$/;"	f	class:VFH	signature:()
+VFH::obstacleDetected	vfh.h	/^	bool obstacleDetected();$/;"	p	class:VFH	access:public	signature:()
+VFH::sector	vfh.h	/^	std::vector<struct Sector> sector;$/;"	m	class:VFH	access:public
+VFH::setAngleIndex	vfh.cpp	/^void VFH::setAngleIndex(std::vector<double> angle)$/;"	f	class:VFH	signature:(std::vector<double> angle)
+VFH::setAngleIndex	vfh.h	/^	void setAngleIndex(std::vector<double> angle);$/;"	p	class:VFH	access:public	signature:(std::vector<double> angle)
+VFH::setControlParameter	vfh.cpp	/^void VFH::setControlParameter(const int A, const int B)$/;"	f	class:VFH	signature:(const int A, const int B)
+VFH::setControlParameter	vfh.h	/^	void setControlParameter(const int, const int);$/;"	p	class:VFH	access:public	signature:(const int, const int)
+VFH::setDensityThreshold	vfh.cpp	/^void VFH::setDensityThreshold(const int th)$/;"	f	class:VFH	signature:(const int th)
+VFH::setDensityThreshold	vfh.h	/^	void setDensityThreshold(const int);$/;"	p	class:VFH	access:public	signature:(const int)
+VFH::setDetectionZone	vfh.cpp	/^void VFH::setDetectionZone(const double range, const int distance)$/;"	f	class:VFH	signature:(const double range, const int distance)
+VFH::setDetectionZone	vfh.h	/^	void setDetectionZone(const double, const int);$/;"	p	class:VFH	access:public	signature:(const double, const int)
+VFH::setSpaceThreshold	vfh.cpp	/^void VFH::setSpaceThreshold(const int th)$/;"	f	class:VFH	signature:(const int th)
+VFH::setSpaceThreshold	vfh.h	/^	void setSpaceThreshold(const int);$/;"	p	class:VFH	access:public	signature:(const int)
+VFH::setVFHThreshold	vfh.cpp	/^void VFH::setVFHThreshold(const int th)$/;"	f	class:VFH	signature:(const int th)
+VFH::setVFHThreshold	vfh.h	/^	void setVFHThreshold(const int);$/;"	p	class:VFH	access:public	signature:(const int)
+VFH::update	vfh.cpp	/^void VFH::update(std::vector<long> distance)$/;"	f	class:VFH	signature:(std::vector<long> distance)
+VFH::update	vfh.h	/^	void update(std::vector<long> distance);$/;"	p	class:VFH	access:public	signature:(std::vector<long> distance)
+_VFHThreshold	vfh.h	/^	int _VFHThreshold;$/;"	m	class:VFH	access:private
+_angleVector	vfh.h	/^	std::vector<double> _angleVector;$/;"	m	class:VFH	access:private
+_constA	vfh.h	/^	int _constA;$/;"	m	class:VFH	access:private
+_constB	vfh.h	/^	int _constB;$/;"	m	class:VFH	access:private
+_densityCounter	vfh.h	/^	int _densityCounter;$/;"	m	class:VFH	access:private
+_densityThreshold	vfh.h	/^	int _densityThreshold;$/;"	m	class:VFH	access:private
+_detectionDistance	vfh.h	/^	int _detectionDistance;$/;"	m	class:VFH	access:private
+_detectionRange	vfh.h	/^	double _detectionRange;$/;"	m	class:VFH	access:private
+_detectionRangeLowerIndex	vfh.h	/^	int _detectionRangeLowerIndex;$/;"	m	class:VFH	access:private
+_detectionRangeUpperIndex	vfh.h	/^	int _detectionRangeUpperIndex;$/;"	m	class:VFH	access:private
+_distanceVector	vfh.h	/^	std::vector<long> _distanceVector;$/;"	m	class:VFH	access:private
+_spaceThreshold	vfh.h	/^	int _spaceThreshold;$/;"	m	class:VFH	access:private
+_totalStep	vfh.h	/^	int _totalStep;$/;"	m	class:VFH	access:private
+angle	vfh.h	/^		double angle;$/;"	m	struct:VFH::Sector	access:public
+ctrlchandler	main.cpp	/^void ctrlchandler(int sig)$/;"	f	signature:(int sig)
+exitFunc	main.cpp	/^void exitFunc(void)$/;"	f	signature:(void)
+getDensity	vfh.cpp	/^double VFH::getDensity()$/;"	f	class:VFH	signature:()
+getDensity	vfh.h	/^	double getDensity();$/;"	p	class:VFH	access:public	signature:()
+getDensityThreshold	vfh.cpp	/^int VFH::getDensityThreshold()$/;"	f	class:VFH	signature:()
+getDensityThreshold	vfh.h	/^	int getDensityThreshold();$/;"	p	class:VFH	access:public	signature:()
+getDetectionRange	vfh.cpp	/^double VFH::getDetectionRange()$/;"	f	class:VFH	signature:()
+getDetectionRange	vfh.h	/^	double getDetectionRange();$/;"	p	class:VFH	access:public	signature:()
+getSpaceThreshold	vfh.cpp	/^int VFH::getSpaceThreshold()$/;"	f	class:VFH	signature:()
+getSpaceThreshold	vfh.h	/^	int getSpaceThreshold();$/;"	p	class:VFH	access:public	signature:()
+getTotalStep	vfh.cpp	/^int VFH::getTotalStep()$/;"	f	class:VFH	signature:()
+getTotalStep	vfh.h	/^	int getTotalStep();$/;"	p	class:VFH	access:public	signature:()
+main	main.cpp	/^int main(void)$/;"	f	signature:(void)
+main	vfhtest.cpp	/^int main(void)$/;"	f	signature:(void)
+obstacleDetected	vfh.cpp	/^bool VFH::obstacleDetected()$/;"	f	class:VFH	signature:()
+obstacleDetected	vfh.h	/^	bool obstacleDetected();$/;"	p	class:VFH	access:public	signature:()
+quit	main.cpp	/^int quit = 0;$/;"	v
+sector	vfh.h	/^	std::vector<struct Sector> sector;$/;"	m	class:VFH	access:public
+setAngleIndex	vfh.cpp	/^void VFH::setAngleIndex(std::vector<double> angle)$/;"	f	class:VFH	signature:(std::vector<double> angle)
+setAngleIndex	vfh.h	/^	void setAngleIndex(std::vector<double> angle);$/;"	p	class:VFH	access:public	signature:(std::vector<double> angle)
+setControlParameter	vfh.cpp	/^void VFH::setControlParameter(const int A, const int B)$/;"	f	class:VFH	signature:(const int A, const int B)
+setControlParameter	vfh.h	/^	void setControlParameter(const int, const int);$/;"	p	class:VFH	access:public	signature:(const int, const int)
+setDensityThreshold	vfh.cpp	/^void VFH::setDensityThreshold(const int th)$/;"	f	class:VFH	signature:(const int th)
+setDensityThreshold	vfh.h	/^	void setDensityThreshold(const int);$/;"	p	class:VFH	access:public	signature:(const int)
+setDetectionZone	vfh.cpp	/^void VFH::setDetectionZone(const double range, const int distance)$/;"	f	class:VFH	signature:(const double range, const int distance)
+setDetectionZone	vfh.h	/^	void setDetectionZone(const double, const int);$/;"	p	class:VFH	access:public	signature:(const double, const int)
+setSpaceThreshold	vfh.cpp	/^void VFH::setSpaceThreshold(const int th)$/;"	f	class:VFH	signature:(const int th)
+setSpaceThreshold	vfh.h	/^	void setSpaceThreshold(const int);$/;"	p	class:VFH	access:public	signature:(const int)
+setVFHThreshold	vfh.cpp	/^void VFH::setVFHThreshold(const int th)$/;"	f	class:VFH	signature:(const int th)
+setVFHThreshold	vfh.h	/^	void setVFHThreshold(const int);$/;"	p	class:VFH	access:public	signature:(const int)
+update	vfh.cpp	/^void VFH::update(std::vector<long> distance)$/;"	f	class:VFH	signature:(std::vector<long> distance)
+update	vfh.h	/^	void update(std::vector<long> distance);$/;"	p	class:VFH	access:public	signature:(std::vector<long> distance)
+width	vfh.h	/^		int width;$/;"	m	struct:VFH::Sector	access:public

@@ -43,7 +43,7 @@ private:
 	BBB::GPIO _inb;
 
 	void _init(void);
-	int _calculateCommand(int, struct ControlParameter);
+	inline int _calculateCommand(int, struct ControlParameter);
 };
 
 };

@@ -21,7 +21,7 @@ public:
 
 		case READ_PATH:
 			addDataNumber(strlen(field.pathName)+1);
-			addPacketType(RC_COMMAND);
+			addPacketType(READ_PATH);
 			memcpy(rawData+4, field.pathName, strlen(field.pathName)+1);
 			break;
 
@@ -41,19 +41,32 @@ public:
 			addPacketType(ASK_STATUS);
 			break;
 
-		case START_NAV:
+		case TOGGLE_NAV:
 			addDataNumber(0);
-			addPacketType(START_NAV);
-			break;
-
-		case PAUSE_NAV:
-			addDataNumber(0);
-			addPacketType(PAUSE_NAV);
+			addPacketType(TOGGLE_NAV);
 			break;
 
 		case RESET:
 			addDataNumber(0);
 			addPacketType(RESET);
+			break;
+			
+		case SHOW_PATH:
+			addDataNumber(0);
+			addPacketType(SHOW_PATH);
+			break;
+
+		case ADD_PATH:
+			addDataNumber(16);
+			addPacketType(ADD_PATH);
+			memcpy(rawData+4, &(field.latitude), 8);
+			memcpy(rawData+12, &(field.longitude), 8);
+			break;
+
+		case REMOVE_PATH:
+			addDataNumber(1);
+			addPacketType(REMOVE_PATH);
+			rawData[4] = (unsigned char)field.pathPointNumber;
 			break;
 
 		default:
@@ -67,6 +80,18 @@ public:
 	virtual PacketType resolveData()
 	{
 		switch(verifyPacket()) {
+
+		case ACK_OK:
+			field.packetType = ACK_OK;
+			field.statusBit = rawData[4];
+			field.pathPointNumber = rawData[5];
+			field.totalPathPointNumber = rawData[6];
+			break;
+        
+		case ACK_NOK:
+			field.packetType = ACK_NOK;
+			break;
+        
 		case ERROR_CMD:
 			field.packetType = ERROR_CMD;
 			break;
@@ -75,44 +100,13 @@ public:
 			field.packetType = TIMEOUT;
 			break;
 
-		case ACK_NOK:
-			field.packetType = ACK_NOK;
-			break;
-        
-		case ACK_READ_PATH:
-			field.packetType = ACK_READ_PATH;
-			field.pathPointNumber = rawData[4];
-			break;
-        
-		case ACK_SAVE_PATH:
-			field.packetType = ACK_SAVE_PATH;
-			field.pathPointNumber = rawData[4];
-			break;
-        
 		case ACK_STATUS:
 			field.packetType = ACK_STATUS;
 			memcpy(&(field.latitude), rawData+4, 8);
 			memcpy(&(field.longitude), rawData+12, 8);
 			memcpy(&(field.yaw), rawData+20, 8);
 			field.statusBit = rawData[28];
-			break;
-        
-		case ACK_START_NAV:
-			field.packetType = ACK_START_NAV;
-			field.pathPointNumber = rawData[4];
-			break;
-        
-		case ACK_PAUSE_NAV:
-			field.packetType = ACK_PAUSE_NAV;
-			field.pathPointNumber = rawData[4];
-			break;
-        
-		case ACK_CLEAR_PATH:
-			field.packetType = ACK_CLEAR_PATH;
-			break;
-        
-		case ACK_RESET:
-			field.packetType = ACK_RESET;
+			field.totalPathPointNumber = rawData[29];
 			break;
         
 		default:

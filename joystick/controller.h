@@ -45,7 +45,7 @@ public:
 	char BtnLB() {return button[4];}
 	char BtnRB() {return button[5];}
 	char BtnBack() {return button[6];}
-	char BtnSelect() {return button[7];}
+	char BtnStart() {return button[7];}
 	char BtnXBOX() {return button[8];}
 	char BtnThumbL() {return button[9];}
 	char BtnThumbR() {return button[10];}

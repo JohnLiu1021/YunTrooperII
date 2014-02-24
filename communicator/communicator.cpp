@@ -62,10 +62,12 @@ int YT::Communicator::open(const char *name, const int baudRate)
 	cfsetispeed(&options, baud);
 	cfsetospeed(&options, baud);
 	options.c_cflag |= (CLOCAL | CREAD);
+	// Reset all settings
 	options.c_lflag = 0;
+	options.c_iflag = 0;
+	options.c_oflag = 0;
 	options.c_cc[VTIME]	= 1;
 	options.c_cc[VMIN]	= 1;
-	options.c_iflag |= IGNPAR;
 	tcsetattr(_sharedData.portFd, TCSANOW, &options);
 	tcflush(_sharedData.portFd, TCIOFLUSH);
 
@@ -161,6 +163,7 @@ void *YT::Communicator::_handle(void *ptr)
 		
 	}
 	pthread_cleanup_pop(0);
+	pthread_exit(NULL);
 }
 
 void YT::Communicator::_cleanup_function(void *ptr)

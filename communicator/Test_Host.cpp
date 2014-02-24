@@ -30,9 +30,9 @@ int main(void)
 	/* Setting interval timer */
 	struct itimerval delay;
 	delay.it_value.tv_sec = 0;
-	delay.it_value.tv_usec = 50000;
+	delay.it_value.tv_usec = 100000;
 	delay.it_interval.tv_sec = 0;
-	delay.it_interval.tv_usec = 50000;
+	delay.it_interval.tv_usec = 100000;
 
 	/* XBox controller */
 	Controller xbox("/dev/input/js0", NONBLOCK);
@@ -40,7 +40,7 @@ int main(void)
 
 	/* Setting communicator */
 	Communicator communicator;
-	communicator.open("/dev/ttyUSB0", 57600);
+	communicator.open("/dev/ttyUSB0", 38400);
 	communicator.flushData();
 
 	PacketHost command;
@@ -53,41 +53,58 @@ int main(void)
 	while(!quit) {
 		pause();
 		xbox.readButtons(&btns);
-		if (btns.BtnA()) {
+		/* Command mode */
+		if (btns.BtnB()) {
 			command.field.packetType = CLEAR_PATH;
 			
 			pause();
 			communicator.sendCommand(&command);
 			pause();
-			if (communicator.readCommand(&command) == ACK_CLEAR_PATH) {
-				printf("Ack. message received!\n");
+			if (communicator.readCommand(&command) == ACK_OK) {
+				printf("Clear path points\n");
 			} else {
 				printf("No ack. message...\n");
 			}
 			continue;
 
-		} else if (btns.BtnB()) {
+		} else if (btns.BtnRB()) {
 			command.field.packetType = ASK_STATUS;
 			pause();
 			communicator.sendCommand(&command);
 			pause();
 			if (communicator.readCommand(&command) == ACK_STATUS) {
-				printf("Ack. message received!\n");
 				printf("Lat = %f, Lon = %f, Yaw = %f\n", 
 					command.field.latitude,
 					command.field.longitude,
 					command.field.yaw);
+				printf("Status = %X, total path points number = %d\n", 
+					command.field.statusBit,
+					command.field.totalPathPointNumber);
 			} else {
 				printf("No ack. message...\n");
 			}
-
-		} else {
-			signed char steer = -(btns.AxisX() * 100) / 32767;
-			signed char speed = -(btns.AxisZ2() * 100) / 32767;
-			command.field.packetType = RC_COMMAND;
-			command.field.speed = speed;
-			command.field.steer = steer;
+		} else if (btns.BtnA()) {
+			command.field.packetType = ADD_PATH;
+			pause();
 			communicator.sendCommand(&command);
+			pause();
+			if (communicator.readCommand(&command) == ACK_OK) {
+				printf("Total Number = %d\n",
+					command.field.totalPathPointNumber);
+			} else {
+				printf("No ack. message...\n");
+			}
+		} else {
+			/* LT is released */
+			if (btns.AxisLT() < 20000) {
+				signed char steer = -(btns.AxisX() * 100) / 32767;
+				signed char speed = -(btns.AxisZ2() * 100) / 32767;
+				printf("speed = %d, steer = %d\n", speed, steer);
+				command.field.packetType = RC_COMMAND;
+				command.field.speed = speed;
+				command.field.steer = steer;
+				communicator.sendCommand(&command);
+			}
 		}
 	}
 	return 0;

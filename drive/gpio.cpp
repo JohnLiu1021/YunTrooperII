@@ -12,6 +12,13 @@ BBB::GPIO::GPIO(const int gpioNumber, const int direction)
 	this->open(gpioNumber, direction);
 }
 
+BBB::GPIO::~GPIO()
+{
+	if (_direction) {
+		this->value(0);
+	}
+}
+
 int BBB::GPIO::open(const int gpioNumber, const int dir)
 {
 	_gpioNumber = gpioNumber;
@@ -59,7 +66,7 @@ int BBB::GPIO::setDirection(const int dir)
 		exit(EXIT_FAILURE);
 	}
 	
-	if (_direction)
+	if (_direction) 
 		this->value(0);
 
 	return 0;
@@ -111,13 +118,33 @@ int BBB::GPIO::value(const int level)
 	if (_direction == 0)
 		return -1;
 	int wr;
-	if (level)
+	if (level) {
+		_state = true;
 		wr = write(_valueFd, "1", 1);
-	else
+	} else {
+		_state = false;
 		wr = write(_valueFd, "0", 1);
+	}
 	
 	return wr;
 }
+
+int BBB::GPIO::toggle()
+{
+	if (_direction == 0)
+		return -1;
+
+	int ret;
+
+	if (_state)
+		ret = this->value(0);
+	else
+		ret = this->value(1);
+
+	return ret;
+}
+
+
 
 int BBB::GPIO::getFd()
 {
