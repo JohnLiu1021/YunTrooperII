@@ -4,10 +4,9 @@
 #include "drive/drive.h"
 #include "drive/gpio.h"
 #include "MTiG/cmt3.h"
-#include "VFH/vfh.h"
+#include "VFH2/vfh2.h"
 #include "logfile/logfile.h"
 
-#include <Urg_driver.h>
 #include <errno.h>
 #include <atomic>
 
@@ -176,27 +175,15 @@ int main(void)
 		quit = 1;
 	}
 
-	/* Setting up LRF */
-	Urg_driver urg;
-	if (!urg.open("/dev/ttyACM0")) {
-		syslog.write("Error: Main: Unable to open LRF: %s\n", urg.what());
-		quit.store(1, std::memory_order_relaxed);
-		quit = 1;
-	}
-	int min_step, max_step;
-	urg.start_measurement(Urg_driver::Distance);
-	min_step = urg.min_step();
-	max_step = urg.max_step();
-
-	std::vector<double> angle;
-	for (int i=min_step; i<=max_step; i+=SKIP_INDEX) {
-		angle.push_back(urg.step2deg(i));
-	}
-
 	/* VFH algorithm */
 	VFH vfh;
-	vfh.setAngleIndex(angle);
-	vfh.setDetectionZone(60.0, 1500);
+	vfh.open("/dev/ttyACM0");
+
+	vfh.setScanningParameter(-90, 90, 4);
+	vfh.setBodyWidth(400);
+	vfh.setDetectionZone(RECT, 500, 1500);
+	vfh.setDensityThreshold(400);
+	vfh.setSpaceThreshold(450);
 
 	/* Path point class */
 	PathPoints path;
@@ -206,8 +193,8 @@ int main(void)
 	*/
 
 	/* Error counter */
-	int errorCounter = 0;
-	int collisionCounter = 0;
+	int cmdErrorCounter = 0;
+	int vfhErrorCounter = 0;
 
 	/* Navigation toggle flag */
 	bool Flag_Nav = false;
@@ -220,34 +207,20 @@ int main(void)
 	while(!quit.load(std::memory_order_relaxed)) {
 		syslog.flush();
 
-		/* Reading LRF data */
-		std::vector<long> data;
-		std::vector<long> reducedData;
-		long time_stamp = 0;
-		if (!urg.get_distance(data, &time_stamp)) {
+		/* Update VFH algorithm */
+		if (!vfh.update()) {
 			//quit.store(1, std::memory_order_relaxed);
-			std::string errStr = urg.what();
-			syslog.write("Error: Main: read LRF: %s\n", errStr.c_str());
+			syslog.write("Error: Main: read LRF: %s\n", vfh.what());
 			syslog.write("Error: Main: stop LRF measuremnet.\n");
-			urg.stop_measurement();
+			vfh.stop_measurement();
 			syslog.write("Error: Main: start LRF measuremnet.\n");
-			urg.start_measurement(Urg_driver::Distance);
+			vfh.start_measurement(Urg_driver::Distance);
+			syslog.write("Error: Main: LRF measurement started.\n");
+			vfhErrorCounter++;
+		} else {
+			vfhErrorCounter = 0;
 		}
 		
-		// Reducing the data and update the collision counter
-		collisionCounter = 0;
-		for (int j=urg.step2index(min_step); j<urg.step2index(max_step); j+=SKIP_INDEX) {
-			if (data[j] > 4000 || data[j] < 20)
-				data[j] = 4000;
-			reducedData.push_back(data[j] - BODY_WIDTH);
-
-			if ((data[j] - BODY_WIDTH) < 0 )
-				collisionCounter++;
-		}
-
-		// Update VFH
-		vfh.update(reducedData);
-
 		// Read data from gps thread
 		pthread_mutex_lock(&(gpsData.mutex));
 		unsigned char gpsStatus = gpsData.status;
@@ -289,9 +262,9 @@ int main(void)
 
 		/* Error command or no data */
 		if (packetType == ERROR_CMD || packetType == TIMEOUT) {
-			errorCounter++;
+			cmdErrorCounter++;
 		} else {
-			errorCounter = 0;
+			cmdErrorCounter = 0;
 		}
 
 		/* Resolving command */
@@ -417,16 +390,15 @@ int main(void)
 		default:
 			break;
 		}
-
-		if (errorCounter >= 10) {
+		if (cmdErrorCounter >= 10) {
 			speedValue = 0;
 			steerValue = 0;
 		}
 
 		/* Start navigation */
 		if (Flag_Nav) {
-			/* Reset Error counter */
-			errorCounter = 0;
+			/* Reset Command Error counter */
+			cmdErrorCounter = 0;
 
 			if (path.empty()) {
 				syslog.write("System: Path does not exist, navigation cancelled\n");
@@ -459,85 +431,83 @@ int main(void)
 				directionError -= 360;
 			else if (directionError < -180)
 				directionError += 360;
-			
+
 			int obstacleDetectedValue;
-			if (vfh.obstacleDetected()) {
+			if (vfh.sector.empty()) {
+				led1.toggle();
+				speedValue = 0;
+				obstacleDetectedValue = -2;
+				
+			} else if (vfh.collisionDetected()) {
+				led1.toggle();
+				speedValue = 0;
+				obstacleDetectedValue = -1;
+
+			} else if (vfh.obstacleDetected()) {
+				led1.value(1);
 				obstacleDetectedValue = 1;
 				double max = 0.0;
 				double commandAngle = 0.0;
-				for (size_t i=0; i<vfh.sector.size(); i++) {
-					double diff = (directionError - vfh.sector[i].angle);
-					if (diff < 0) 
-						diff = -diff;
-					diff = 1.0 - (diff / 180.0);
+
+				std::vector<VFH::Sector>::iterator it_s;
+				for (it_s=vfh.sector.begin(); it_s!=vfh.sector.end(); it_s++) {
+					double diff = directionError - it_s->direction;
+					if (diff > 180) diff -= 360;
+					else if (diff < -180) diff += 360;
+					diff = fabs(diff) / 180;
 					
-					int totalStep = vfh.getTotalStep();
-					double width = (double)vfh.sector[i].width / (double)totalStep;
+					double width = (double)it_s->width / (double)vfh.getTotalStep();
 
 					double objval = (ALPHA * diff) +  (BETA * width);
 
-					if (i == 0) {
+					if (it_s == vfh.sector.begin()) {
 						max = objval;
-						commandAngle = vfh.sector[i].angle;
+						commandAngle = it_s->direction;
 					} else {
 						if (objval > max) {
 							max = objval;
-							commandAngle = vfh.sector[i].angle;
+							commandAngle = it_s->direction;
 						}
 					}
 				}
 				steerValue = (int)(commandAngle * STEERING_GAIN);
                         
-				if (vfh.sector.size() == 0) {
+				if (vfh.sector.empty()) {
 					speedValue = 0;
+					led1.toggle();
 				} else {
 					speedValue = (int)((1.0 - vfh.getDensity()) * MAX_SPEED);
 				}
 			} else {
+				led1.value(1);
 				obstacleDetectedValue = 0;
 				steerValue = (int)(directionError * STEERING_GAIN);
 				speedValue = MAX_SPEED;
 			}
 
-			// Collision Detected
-			if (collisionCounter >= 5) {
-				obstacleDetectedValue = -1;
+			if (vfhErrorCounter >= 10) {
 				speedValue = 0;
 				steerValue = 0;
-				led1.toggle();
-			} else {
-				led1.value(1);
 			}
 
-			/* Nav. log structure:
-			   1 -> current path number
-			   2 -> total path number
-			   3 -> lat. of target
-			   4 -> lon. of target
-			   5 -> lat. of current pos.
-			   6 -> lon. of current pos.
-			   7 -> target direction
-			   8 -> current direction(yaw angle)
-			   9 -> speed value
-			   10-> steer value
-			   11-> obstacle (1 for detected, 0 for nothing);
-			*/
 			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d,%d\n",
-				     path.getCurrentIndex()+1,
-				     path.size(),
-				     latTarget,
-				     lonTarget,
-				     latMeasured,
-				     lonMeasured,
-				     directionError,
-				     yaw,
-				     speedValue,
-				     steerValue,
-				     obstacleDetectedValue);
+				     path.getCurrentIndex()+1,	 // 1 -> current path number
+				     path.size(),                // 2 -> total path number
+				     latTarget,                  // 3 -> lat. of target
+				     lonTarget,                  // 4 -> lon. of target
+				     latMeasured,                // 5 -> lat. of current pos.
+				     lonMeasured,                // 6 -> lon. of current pos.
+				     directionError,             // 7 -> target direction
+				     yaw,                        // 8 -> current direction(yaw angle)
+				     speedValue,                 // 9 -> speed value
+				     steerValue,                 //10 -> steer value
+				     obstacleDetectedValue);     //11 -> obstacle status
+
 			navlog.flush();
 		} else {
 			led1.value(0);
 		}
+
 
 		/* Actuating motor with speed steer value */
 		drive.setSpeed(speedValue);
