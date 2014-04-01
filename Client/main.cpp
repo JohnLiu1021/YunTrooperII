@@ -4,20 +4,14 @@
 #include "drive/drive.h"
 #include "drive/gpio.h"
 #include "MTiG/cmt3.h"
-#include "VFH2/vfh2.h"
+#include "VFHPlus/vfhplus.h"
 #include "logfile/logfile.h"
+#include "Configuration/configuration.h"
 
 #include <errno.h>
 #include <atomic>
 
-#define ALPHA 0.3
-#define BETA 0.7
-#define SKIP_INDEX 4
-#define BODY_WIDTH 200 
-#define STEERING_GAIN 1.5
-#define MAX_SPEED 80 
 #define POS_ERR_SQUARE 1
-
 /* Atomic quit bit */
 std::atomic_char quit(0);
 
@@ -34,6 +28,68 @@ struct MTiGData {
 	double latitude;
 	double longitude;
 	double yaw;
+};
+
+class Config : public Configuration
+{
+public:
+	Config()
+	{
+		struct Option optionTemp;
+		
+		optionTemp.name = "MaxSpeed";
+		optionTemp.value = 75;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "MinSpeed";
+		optionTemp.value = 40;
+		this->options.push_back(optionTemp);
+
+
+		optionTemp.name = "SteeringGain";
+		optionTemp.value = 4;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "HighThreshold";
+		optionTemp.value = 200;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "LowThreshold";
+		optionTemp.value = 0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "A";
+		optionTemp.value = 1500;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "B";
+		optionTemp.value = 1;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "BodyWidth";
+		optionTemp.value = 520;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "ROC";
+		optionTemp.value = 575;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "u1";
+		optionTemp.value = 0.5;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "u2";
+		optionTemp.value = 0.2;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "u3";
+		optionTemp.value = 0.3;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "DensityThreshold";
+		optionTemp.value = 450;
+		this->options.push_back(optionTemp);
+	}
 };
 
 /* Create a thread to read from MTiG, which implemented the asynchronous read */
@@ -175,21 +231,74 @@ int main(void)
 		quit = 1;
 	}
 
-	/* VFH algorithm */
-	VFH vfh;
+	VFHPlus vfh;
 	vfh.open("/dev/ttyACM0");
+	vfh.setScanningParameter(-120, 120, 4);
 
-	vfh.setScanningParameter(-90, 90, 4);
-	vfh.setBodyWidth(400);
-	vfh.setDetectionZone(RECT, 500, 1500);
-	vfh.setDensityThreshold(400);
-	vfh.setSpaceThreshold(450);
+	/* Configuration class */
+	Config config;
+	double MaxSpeed;
+	double MinSpeed;
+	double SteeringGain;
+
+	if (config.readFromFile("VFH.conf") < 0) {
+		syslog.write("Config file does not exist, using default config and create it.\n");
+		config.writeToFile("VFH.conf");
+	}
+
+	double value1, value2, value3;
+
+	if (config.search("MaxSpeed", value1))
+		MaxSpeed = value1;
+
+	if (config.search("MinSpeed", value1))
+		MinSpeed = value1;
+
+	if (config.search("SteeringGain", value1))
+		SteeringGain = value1;
+
+	if (config.search("ROC", value1)) {
+		vfh.setRadiusOfCurvature(value1);
+		syslog.write("ROC: %f\n", vfh.getRadiusOfCurvature());
+	}
+
+	if (config.search("BodyWidth", value1)) {
+		vfh.setBodyWidth(value1);
+		syslog.write("BodyWidth: %d\n", vfh.getBodyWidth());
+	}
+
+	if (config.search("DensityThreshold", value1)) {
+		vfh.setDensityThreshold(value1);
+		syslog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
+	}
+
+	if (config.search("A", value1) &&
+	    config.search("B", value2) ) {
+		vfh.setVFHPlusParameter(value1, value2);
+		vfh.getVFHPlusParameter(value1, value2);
+		syslog.write("VFH Para.: %f, %f\n", value1, value2);
+	}
+
+	if (config.search("LowThreshold", value1) &&
+	    config.search("HighThreshold", value2)) {
+		vfh.setVFHThreshold(value1, value2);
+		syslog.write("VFH Threshold: low:%f, high: %f\n", value1, value2);
+	}
+	
+	if (config.search("u1", value1) &&
+	    config.search("u2", value2) && 
+	    config.search("u3", value3)) {
+		vfh.setCostFuncParameter(value1, value2, value3);
+		vfh.getCostFuncParameter(value1, value2, value3);
+		syslog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
+	}
+	vfh.start();
 
 	/* Path point class */
 	PathPoints path;
 
 	/* Debug!!!
-	path.add(23.69481, 120.5363001);
+	path.add(23.69481, 120.5363001);\
 	*/
 
 	/* Error counter */
@@ -432,57 +541,16 @@ int main(void)
 			else if (directionError < -180)
 				directionError += 360;
 
-			int obstacleDetectedValue;
-			if (vfh.sector.empty()) {
+			/* VFH Plus algorithm */
+			double commandAngle = vfh.calculateDirection(directionError);
+			if (commandAngle > 180) {
+				speedValue = 0;	
+				steerValue = 0;
 				led1.toggle();
-				speedValue = 0;
-				obstacleDetectedValue = -2;
-				
-			} else if (vfh.collisionDetected()) {
-				led1.toggle();
-				speedValue = 0;
-				obstacleDetectedValue = -1;
-
-			} else if (vfh.obstacleDetected()) {
-				led1.value(1);
-				obstacleDetectedValue = 1;
-				double max = 0.0;
-				double commandAngle = 0.0;
-
-				std::vector<VFH::Sector>::iterator it_s;
-				for (it_s=vfh.sector.begin(); it_s!=vfh.sector.end(); it_s++) {
-					double diff = directionError - it_s->direction;
-					if (diff > 180) diff -= 360;
-					else if (diff < -180) diff += 360;
-					diff = fabs(diff) / 180;
-					
-					double width = (double)it_s->width / (double)vfh.getTotalStep();
-
-					double objval = (ALPHA * diff) +  (BETA * width);
-
-					if (it_s == vfh.sector.begin()) {
-						max = objval;
-						commandAngle = it_s->direction;
-					} else {
-						if (objval > max) {
-							max = objval;
-							commandAngle = it_s->direction;
-						}
-					}
-				}
-				steerValue = (int)(commandAngle * STEERING_GAIN);
-                        
-				if (vfh.sector.empty()) {
-					speedValue = 0;
-					led1.toggle();
-				} else {
-					speedValue = (int)((1.0 - vfh.getDensity()) * MAX_SPEED);
-				}
 			} else {
+				steerValue = commandAngle * SteeringGain;
+				speedValue = (MaxSpeed - MinSpeed) * (1 - vfh.getDensity()) + MinSpeed;
 				led1.value(1);
-				obstacleDetectedValue = 0;
-				steerValue = (int)(directionError * STEERING_GAIN);
-				speedValue = MAX_SPEED;
 			}
 
 			if (vfhErrorCounter >= 10) {
@@ -490,7 +558,7 @@ int main(void)
 				steerValue = 0;
 			}
 
-			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d,%d\n",
+			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d\n",
 				     path.getCurrentIndex()+1,	 // 1 -> current path number
 				     path.size(),                // 2 -> total path number
 				     latTarget,                  // 3 -> lat. of target
@@ -500,8 +568,7 @@ int main(void)
 				     directionError,             // 7 -> target direction
 				     yaw,                        // 8 -> current direction(yaw angle)
 				     speedValue,                 // 9 -> speed value
-				     steerValue,                 //10 -> steer value
-				     obstacleDetectedValue);     //11 -> obstacle status
+				     steerValue);                //10 -> steer value
 
 			navlog.flush();
 		} else {
