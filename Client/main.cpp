@@ -105,6 +105,7 @@ void *GPSRead(void *ptr)
 			serial.getLastResult(),
 			xsensResultText(serial.getLastResult()));
 		quit.store(1, std::memory_order_relaxed);
+		pthread_exit(NULL);
 	}
 	
 	int timeout = 1000;
@@ -228,71 +229,76 @@ int main(void)
 	if (pthread_create(&thread, NULL, GPSRead, (void*)&gpsData) < 0) {
 		syslog.write("Error: Main: Thread Creation failed : %s\n", strerror(errno));
 		quit.store(1, std::memory_order_relaxed);
-		quit = 1;
 	}
 
-	VFHPlus vfh;
-	vfh.open("/dev/ttyACM0");
-	vfh.setScanningParameter(-120, 120, 4);
-
-	/* Configuration class */
+	/* Configuration class and variable */
 	Config config;
 	double MaxSpeed;
 	double MinSpeed;
 	double SteeringGain;
-
-	if (config.readFromFile("VFH.conf") < 0) {
-		syslog.write("Config file does not exist, using default config and create it.\n");
-		config.writeToFile("VFH.conf");
+        
+	VFHPlus vfh;
+	if (!vfh.open("/dev/ttyACM0")) {
+		syslog.write("Error: Main: Unable to open LiDAR: %s\n", vfh.what());
+		quit.store(1, std::memory_order_relaxed);
+	} else {
+		vfh.setScanningParameter(-120, 120, 4);
+        
+		if (config.readFromFile("VFH.conf") < 0) {
+			syslog.write("Config file does not exist, using default config and create it.\n");
+			config.writeToFile("VFH.conf");
+		}
+        
+		double value1, value2, value3;
+        
+		if (config.search("MaxSpeed", value1))
+			MaxSpeed = value1;
+        
+		if (config.search("MinSpeed", value1))
+			MinSpeed = value1;
+        
+		if (config.search("SteeringGain", value1))
+			SteeringGain = value1;
+        
+		if (config.search("ROC", value1)) {
+			vfh.setRadiusOfCurvature(value1);
+			syslog.write("ROC: %f\n", vfh.getRadiusOfCurvature());
+		}
+        
+		if (config.search("BodyWidth", value1)) {
+			vfh.setBodyWidth(value1);
+			syslog.write("BodyWidth: %d\n", vfh.getBodyWidth());
+		}
+        
+		if (config.search("DensityThreshold", value1)) {
+			vfh.setDensityThreshold(value1);
+			syslog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
+		}
+        
+		if (config.search("A", value1) &&
+		    config.search("B", value2) ) {
+			vfh.setVFHPlusParameter(value1, value2);
+			vfh.getVFHPlusParameter(value1, value2);
+			syslog.write("VFH Para.: %f, %f\n", value1, value2);
+		}
+        
+		if (config.search("LowThreshold", value1) &&
+		    config.search("HighThreshold", value2)) {
+			vfh.setVFHThreshold(value1, value2);
+			syslog.write("VFH Threshold: low:%f, high: %f\n", value1, value2);
+		}
+		
+		if (config.search("u1", value1) &&
+		    config.search("u2", value2) && 
+		    config.search("u3", value3)) {
+			vfh.setCostFuncParameter(value1, value2, value3);
+			vfh.getCostFuncParameter(value1, value2, value3);
+			syslog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
+		}
+        
+		// Configuration of LiDAR is done, start measurement
+		vfh.start();
 	}
-
-	double value1, value2, value3;
-
-	if (config.search("MaxSpeed", value1))
-		MaxSpeed = value1;
-
-	if (config.search("MinSpeed", value1))
-		MinSpeed = value1;
-
-	if (config.search("SteeringGain", value1))
-		SteeringGain = value1;
-
-	if (config.search("ROC", value1)) {
-		vfh.setRadiusOfCurvature(value1);
-		syslog.write("ROC: %f\n", vfh.getRadiusOfCurvature());
-	}
-
-	if (config.search("BodyWidth", value1)) {
-		vfh.setBodyWidth(value1);
-		syslog.write("BodyWidth: %d\n", vfh.getBodyWidth());
-	}
-
-	if (config.search("DensityThreshold", value1)) {
-		vfh.setDensityThreshold(value1);
-		syslog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
-	}
-
-	if (config.search("A", value1) &&
-	    config.search("B", value2) ) {
-		vfh.setVFHPlusParameter(value1, value2);
-		vfh.getVFHPlusParameter(value1, value2);
-		syslog.write("VFH Para.: %f, %f\n", value1, value2);
-	}
-
-	if (config.search("LowThreshold", value1) &&
-	    config.search("HighThreshold", value2)) {
-		vfh.setVFHThreshold(value1, value2);
-		syslog.write("VFH Threshold: low:%f, high: %f\n", value1, value2);
-	}
-	
-	if (config.search("u1", value1) &&
-	    config.search("u2", value2) && 
-	    config.search("u3", value3)) {
-		vfh.setCostFuncParameter(value1, value2, value3);
-		vfh.getCostFuncParameter(value1, value2, value3);
-		syslog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
-	}
-	vfh.start();
 
 	/* Path point class */
 	PathPoints path;
@@ -581,9 +587,11 @@ int main(void)
 		drive.setSteer(steerValue);
 		//printf("speedValue = %3d, steerValue = %3d\n", speedValue, steerValue);
 	}
+
 	pthread_join(thread, NULL);
-	syslog.writeErr("Program Exit", errno);
+	syslog.write("Program Exit\n");
 	syslog.close();
 	navlog.close();
-	return -1;
+	printf("Return!\n");
+	exit(EXIT_FAILURE);
 }	

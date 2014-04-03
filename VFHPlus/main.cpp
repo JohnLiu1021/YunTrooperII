@@ -176,69 +176,72 @@ int main(void)
 		exit(EXIT_FAILURE);
 	}
 
-	VFHPlus vfh;
-	vfh.open("/dev/ttyACM0");
-	vfh.setScanningParameter(-120, 120, 4);
-
 	VFHConfig config;
 	double MaxSpeed;
 	double MinSpeed;
 	double SteeringGain;
 
-	if (config.readFromFile("VFH.conf") < 0) {
-		VFHlog.write("Config file does not exist, using default config and create it.\n");
-		config.writeToFile("VFH.conf");
+	VFHPlus vfh;
+	if (!vfh.open("/dev/ttyACM0")) {
+		VFHlog.write("Open LiDAR Error!\n");
+		quit = 1;
+	} else {
+		vfh.setScanningParameter(-120, 120, 4);
+        
+		if (config.readFromFile("VFH.conf") < 0) {
+			VFHlog.write("Config file does not exist, using default config and create it.\n");
+			config.writeToFile("VFH.conf");
+		}
+        
+		double value1, value2, value3;
+        
+		if (config.search("MaxSpeed", value1))
+			MaxSpeed = value1;
+        
+		if (config.search("MinSpeed", value1))
+			MinSpeed = value1;
+        
+		if (config.search("SteeringGain", value1))
+			SteeringGain = value1;
+        
+		if (config.search("ROC", value1)) {
+			vfh.setRadiusOfCurvature(value1);
+			VFHlog.write("ROC: %f\n", vfh.getRadiusOfCurvature());
+		}
+        
+		if (config.search("BodyWidth", value1)) {
+			vfh.setBodyWidth(value1);
+			VFHlog.write("BodyWidth: %d\n", vfh.getBodyWidth());
+		}
+        
+		if (config.search("DensityThreshold", value1)) {
+			vfh.setDensityThreshold(value1);
+			VFHlog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
+		}
+        
+		if (config.search("A", value1) &&
+		    config.search("B", value2) ) {
+			vfh.setVFHPlusParameter(value1, value2);
+			vfh.getVFHPlusParameter(value1, value2);
+			VFHlog.write("VFH Para.: %f, %f\n", value1, value2);
+		}
+        
+		if (config.search("LowThreshold", value1) &&
+		    config.search("HighThreshold", value2)) {
+			vfh.setVFHThreshold(value1, value2);
+			VFHlog.write("VFH Threshold: low:%f, high: %f\n", value1, value2);
+		}
+		
+		if (config.search("u1", value1) &&
+		    config.search("u2", value2) && 
+		    config.search("u3", value3)) {
+			vfh.setCostFuncParameter(value1, value2, value3);
+			vfh.getCostFuncParameter(value1, value2, value3);
+			VFHlog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
+		}
+        
+		vfh.start();
 	}
-
-	double value1, value2, value3;
-
-	if (config.search("MaxSpeed", value1))
-		MaxSpeed = value1;
-
-	if (config.search("MinSpeed", value1))
-		MinSpeed = value1;
-
-	if (config.search("SteeringGain", value1))
-		SteeringGain = value1;
-
-	if (config.search("ROC", value1)) {
-		vfh.setRadiusOfCurvature(value1);
-		VFHlog.write("ROC: %f\n", vfh.getRadiusOfCurvature());
-	}
-
-	if (config.search("BodyWidth", value1)) {
-		vfh.setBodyWidth(value1);
-		VFHlog.write("BodyWidth: %d\n", vfh.getBodyWidth());
-	}
-
-	if (config.search("DensityThreshold", value1)) {
-		vfh.setDensityThreshold(value1);
-		VFHlog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
-	}
-
-	if (config.search("A", value1) &&
-	    config.search("B", value2) ) {
-		vfh.setVFHPlusParameter(value1, value2);
-		vfh.getVFHPlusParameter(value1, value2);
-		VFHlog.write("VFH Para.: %f, %f\n", value1, value2);
-	}
-
-	if (config.search("LowThreshold", value1) &&
-	    config.search("HighThreshold", value2)) {
-		vfh.setVFHThreshold(value1, value2);
-		VFHlog.write("VFH Threshold: low:%f, high: %f\n", value1, value2);
-	}
-	
-	if (config.search("u1", value1) &&
-	    config.search("u2", value2) && 
-	    config.search("u3", value3)) {
-		vfh.setCostFuncParameter(value1, value2, value3);
-		vfh.getCostFuncParameter(value1, value2, value3);
-		VFHlog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
-	}
-
-
-	vfh.start();
 
 	double targetOrientation = 0.0;
 	bool flag_startNav = false;
@@ -299,6 +302,6 @@ int main(void)
 	led2.value(0);
 	led1.value(0);
 	VFHlog.write("Reach the end of main func.\n");
-	return 0;
+	exit(EXIT_FAILURE);
 }
 
