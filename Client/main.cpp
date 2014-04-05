@@ -11,7 +11,9 @@
 #include <errno.h>
 #include <atomic>
 
-#define POS_ERR_SQUARE 1
+#include <GeographicLib/Geodesic.hpp>
+
+#define POS_ERR 1
 /* Atomic quit bit */
 std::atomic_char quit(0);
 
@@ -21,6 +23,7 @@ LogFile syslog;
 using namespace YT;
 using namespace xsens;
 using namespace qrk;
+using namespace GeographicLib;
 
 struct MTiGData {
 	pthread_mutex_t mutex;
@@ -237,6 +240,7 @@ int main(void)
 	double MinSpeed;
 	double SteeringGain;
         
+	/* VFH, LiDAR and configuration. */
 	VFHPlus vfh;
 	if (!vfh.open("/dev/ttyACM0")) {
 		syslog.write("Error: Main: Unable to open LiDAR: %s\n", vfh.what());
@@ -296,15 +300,18 @@ int main(void)
 			syslog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
 		}
         
-		// Configuration of LiDAR is done, start measurement
+		/* Configuration of LiDAR is done, start measurement */
 		vfh.start();
 	}
+
+	/* Geodesic class */
+	const Geodesic &geod = Geodesic::WGS84;
 
 	/* Path point class */
 	PathPoints path;
 
 	/* Debug!!!
-	path.add(23.69481, 120.5363001);\
+	path.add(23.69481, 120.53631);
 	*/
 
 	/* Error counter */
@@ -319,6 +326,7 @@ int main(void)
 	int speedValue = 0;
 	int steerValue = 0;
 
+	/* Entering main loop */
 	while(!quit.load(std::memory_order_relaxed)) {
 		syslog.flush();
 
@@ -346,13 +354,12 @@ int main(void)
 
 		/* Debug!!!!
 		yaw = 0.0;
-		latMeasured = 23.6948000;
-		lonMeasured = 120.5363000;
+		latMeasured = 23.6948;
+		lonMeasured = 120.5363;
 		*/
+		
 
-		/* 
-		   Check the status of gps. If status OK, turn led2 on.
-		*/
+		/* Check the status of gps. If status OK, turn led2 on. */
 		if (gpsStatus == 7)
 			led2.value(1);
 		else
@@ -520,13 +527,11 @@ int main(void)
 				Flag_Nav = false;
 				continue;
 			}
-				
-			double m_x, m_y, distSquare;
-			m_x = PathPoints::Lat2Meter(latMeasured, latTarget);
-			m_y = PathPoints::Lon2Meter(latMeasured, lonMeasured, lonTarget);
-			distSquare = m_x*m_x + m_y*m_y;
 
-			if (distSquare < POS_ERR_SQUARE) {
+			/* Calculate geodesic distance and azimuth using GeographicLib */
+			double distance, azi1, azi2;
+			geod.Inverse(latMeasured, lonMeasured, latTarget, lonTarget, distance, azi1, azi2);
+			if (distance < POS_ERR) {
 				if (!path.getNext(latTarget, lonTarget)) {
 					syslog.write("System: Reaching final path point, stop navigation.\n");
 					path.setCurrentIndex(0);
@@ -538,9 +543,8 @@ int main(void)
 				}
 			}
 
-			double targetDirection = -(atan2(m_y, m_x)) * (180/M_PI);
-			double directionError = targetDirection - yaw;
-			
+			double directionError = (-azi1) - yaw;
+				
 			/* IMPORTANT!!!! Unwrap the angle */
 			if (directionError > 180)
 				directionError -= 360;
@@ -549,7 +553,7 @@ int main(void)
 
 			/* VFH Plus algorithm */
 			double commandAngle = vfh.calculateDirection(directionError);
-			if (commandAngle > 180) {
+			if (commandAngle > 180) { // All directions are blocked or error occurred
 				speedValue = 0;	
 				steerValue = 0;
 				led1.toggle();
@@ -558,12 +562,14 @@ int main(void)
 				speedValue = (MaxSpeed - MinSpeed) * (1 - vfh.getDensity()) + MinSpeed;
 				led1.value(1);
 			}
-
+	
+			/* VFH Error! */
 			if (vfhErrorCounter >= 10) {
 				speedValue = 0;
 				steerValue = 0;
 			}
 
+			/* Record all data during navigation */
 			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d\n",
 				     path.getCurrentIndex()+1,	 // 1 -> current path number
 				     path.size(),                // 2 -> total path number
@@ -581,17 +587,14 @@ int main(void)
 			led1.value(0);
 		}
 
-
 		/* Actuating motor with speed steer value */
 		drive.setSpeed(speedValue);
 		drive.setSteer(steerValue);
-		//printf("speedValue = %3d, steerValue = %3d\n", speedValue, steerValue);
 	}
 
 	pthread_join(thread, NULL);
 	syslog.write("Program Exit\n");
 	syslog.close();
 	navlog.close();
-	printf("Return!\n");
 	exit(EXIT_FAILURE);
 }	
