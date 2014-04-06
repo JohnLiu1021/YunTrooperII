@@ -161,7 +161,7 @@ int PathPoints::setCurrentIndex(const int index)
 
 int PathPoints::getCurrentIndex()
 {
-	return (_currentIndex-1);
+	return _currentIndex;
 }
 
 int PathPoints::getNext(double *lat, double *lon)
