@@ -171,12 +171,12 @@ int PathPoints::getNext(double *lat, double *lon)
 
 	std::vector<struct Point>::iterator it = _pathPoints.begin() + _currentIndex;
 	if (it == _pathPoints.end()) {
-		return 0;
+		return -1;
 	} else {
 		*lat = (*it).latitude;
 		*lon = (*it).longitude;
 		_currentIndex++;
-		return _currentIndex;
+		return (_currentIndex-1);
 	}
 }
 
@@ -187,12 +187,12 @@ int PathPoints::getNext(double &lat, double &lon)
 
 	std::vector<struct Point>::iterator it = _pathPoints.begin() + _currentIndex;
 	if (it == _pathPoints.end()) {
-		return 0;
+		return -1;
 	} else {
 		lat = (*it).latitude;
 		lon = (*it).longitude;
 		_currentIndex++;
-		return _currentIndex;
+		return (_currentIndex-1);
 	}
 }
 
