@@ -119,14 +119,6 @@ void *GPSRead(void *ptr)
 		quit.store(1, std::memory_order_relaxed);
 	}
 
-	/* Show available scenarios
-	CmtScenario *scen = new CmtScenario[CMT_MAX_SCENARIOS_IN_MT + 1];
-	serial.getAvailableScenarios(scen);
-	for (int i=0; i<CMT_MAX_SCENARIOS_IN_MT+1; i++) {
-		printf("m_type:%d, m_lable:%s\n", scen[i].m_type, scen[i].m_label);
-	}
-	*/
-
 	/* Set MTiG scenario */
 	if (serial.setScenario(1) != XRV_OK) {
 		syslog.write("Error: MTiG: %d occured during set scenario: %s\n",
@@ -193,7 +185,6 @@ int main(void)
 	navlog.timeStampOFF();
 	navlog.counterStampOFF();
 	navlog.setDir("/root/NavLog");
-	navlog.open();
 
 	/* Setting up Log file */
 	pthread_mutex_t syslogMutex;
@@ -311,7 +302,9 @@ int main(void)
 	PathPoints path;
 
 	/* Debug!!!
-	path.add(23.69481, 120.53631);
+	path.add(23.694801, 120.536301);
+	path.add(23.694802, 120.536302);
+	path.add(23.694803, 120.536303);
 	*/
 
 	/* Error counter */
@@ -319,10 +312,9 @@ int main(void)
 	int vfhErrorCounter = 0;
 
 	/* Navigation toggle flag */
-	bool Flag_Nav = false;
-	
+	bool navigationStart = false;
+
 	/* Temp. Variable */
-	double latTarget, lonTarget;
 	int speedValue = 0;
 	int steerValue = 0;
 
@@ -370,7 +362,7 @@ int main(void)
 			syslog.write("System: Emergency Stop\n");
 			drive.setSteer(0);
 			drive.setSpeed(0);
-			Flag_Nav = false;
+			navigationStart = false;
 
 			// Reset steering deadzone
 			steerPara.deadzone = 20;
@@ -434,7 +426,7 @@ int main(void)
 			packet.field.longitude = lonMeasured;
 			packet.field.yaw = yaw;
 			packet.field.statusBit = gpsStatus;
-			if (Flag_Nav) {
+			if (navigationStart) {
 				packet.field.statusBit |= 0x08;
 			} else {
 				packet.field.statusBit &= ~0x08;
@@ -445,23 +437,26 @@ int main(void)
 
 		case TOGGLE_NAV:
 			syslog.write("System: Toggling Navigation!\n");
-			if (!Flag_Nav) {
-				syslog.write("System: Start nav.\n");
-				Flag_Nav = true;
+			if (!navigationStart) {
+				if (path.empty()) {
+					syslog.write("System: No path points exists, navigation cancelled\n");
+					packet.field.packetType = ACK_NOK;
+				} else {
+					syslog.write("System: Start navigation.\n");
+					packet.field.packetType = ACK_OK;
 
-				// Set smaller steering deadzone
-				steerPara.deadzone = 10;
-				drive.setSteerParameter(steerPara);
+					// Set smaller steering deadzone
+					steerPara.deadzone = 10;
+					drive.setSteerParameter(steerPara);
 
-				packet.field.statusBit |= 0x08;
-				/* For the first time */
-				if (path.getCurrentIndex() == -1) {
-					path.getNext(latTarget, lonTarget);
+					packet.field.statusBit |= 0x08;
+					navigationStart = true;
 				}
 
 			} else {
-				syslog.write("System: Stop nav.\n");
-				Flag_Nav = false;
+				syslog.write("System: Stop navigation.\n");
+				packet.field.packetType = ACK_OK;
+				navigationStart = false;
 
 				// Reset steering deadzone
 				steerPara.deadzone = 20;
@@ -471,8 +466,7 @@ int main(void)
 				packet.field.statusBit &= ~0x08;
 			}
 
-			packet.field.packetType = ACK_OK;
-			packet.field.pathPointNumber = (unsigned char)path.getCurrentIndex() + 1;
+			packet.field.pathPointNumber = (unsigned char)path.getCurrentIndex();
 			packet.field.totalPathPointNumber = path.size();
 			communicator.sendCommand(&packet);
 			break;
@@ -518,32 +512,43 @@ int main(void)
 		}
 
 		/* Start navigation */
-		if (Flag_Nav) {
+		if (navigationStart) {
 			/* Reset Command Error counter */
 			cmdErrorCounter = 0;
 
-			if (path.empty()) {
-				syslog.write("System: Path does not exist, navigation cancelled\n");
-				Flag_Nav = false;
-				continue;
+			double latTarget, lonTarget;
+			double distance, azi1, azi2;
+			double directionError;
+			double commandAngle;
+
+			/* For the first time */
+			if (path.getCurrentIndex() == -1) {
+				navlog.open();
+				path.setCurrentIndex(0);
 			}
+			
+			/* Read target coor. from current index. */
+			path.get(latTarget, lonTarget);
 
 			/* Calculate geodesic distance and azimuth using GeographicLib */
-			double distance, azi1, azi2;
 			geod.Inverse(latMeasured, lonMeasured, latTarget, lonTarget, distance, azi1, azi2);
 			if (distance < POS_ERR) {
-				if (!path.getNext(latTarget, lonTarget)) {
-					syslog.write("System: Reaching final path point, stop navigation.\n");
+				/* Read the next target coor. */
+				if (path.getNext(latTarget, lonTarget) == -1) { // Reached the final
+					syslog.write("System: Reaching the final path point, stop navigation.\n");
 					path.setCurrentIndex(0);
-					Flag_Nav = false;
-
+					navigationStart = false;
+					
 					// Reset steering deadzone
 					steerPara.deadzone = 20;
 					drive.setSteerParameter(steerPara);
+
+					navlog.close();
+					continue;
 				}
 			}
-
-			double directionError = (-azi1) - yaw;
+				
+			directionError = (-azi1) - yaw;
 				
 			/* IMPORTANT!!!! Unwrap the angle */
 			if (directionError > 180)
@@ -552,7 +557,7 @@ int main(void)
 				directionError += 360;
 
 			/* VFH Plus algorithm */
-			double commandAngle = vfh.calculateDirection(directionError);
+			commandAngle = vfh.calculateDirection(directionError);
 			if (commandAngle > 180) { // All directions are blocked or error occurred
 				speedValue = 0;	
 				steerValue = 0;
@@ -571,7 +576,7 @@ int main(void)
 
 			/* Record all data during navigation */
 			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d\n",
-				     path.getCurrentIndex(),	 // 1 -> current path number
+				     path.getCurrentIndex()+1,	 // 1 -> current path number
 				     path.size(),                // 2 -> total path number
 				     latTarget,                  // 3 -> lat. of target
 				     lonTarget,                  // 4 -> lon. of target
@@ -581,7 +586,6 @@ int main(void)
 				     yaw,                        // 8 -> current direction(yaw angle)
 				     speedValue,                 // 9 -> speed value
 				     steerValue);                //10 -> steer value
-
 			navlog.flush();
 		} else {
 			led1.value(0);
