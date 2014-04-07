@@ -104,7 +104,9 @@ int PathPoints::writeToFile(const char *fileName)
 
 int PathPoints::setCurrentIndex(const int index)
 {
-	if ((size_t)index >= _pathPoints.size() || index < -1)
+	if (index < -1) 
+		return -2;
+	else if (index >= (signed int)_pathPoints.size())
 		return -2;
 	else
 		_currentIndex = index;
