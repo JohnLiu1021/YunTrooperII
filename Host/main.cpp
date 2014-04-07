@@ -1,11 +1,14 @@
 #include <sys/time.h>
 #include <signal.h>
+#include <iostream>
+#include <iomanip>
 
 #include "joystick/controller.h"
 #include "communicator/communicator.h"
 #include "communicator/packethost.h"
 
 using namespace YT;
+using namespace std;
 
 /* Period of interval timer (in us) */
 #define PERIOD 100000
@@ -28,7 +31,7 @@ void alarm_handler(int signo){}
 
 void ctrlc_handler(int signo)
 {
-	printf("Interrupt\n");
+	cout << "Interrupt\n";
 	quit = 1;
 }
 
@@ -55,6 +58,7 @@ int main(void)
 	Communicator communicator;
 	communicator.open("/dev/ttyUSB0", 38400);
 	communicator.flushData();
+	PacketType ack;
 	PacketHost packet;
 
 	/* Start the interval timer */
@@ -70,156 +74,243 @@ int main(void)
 
 		/* Query of status can be triggered at any time */
 		if (btns.BtnLB()) {
-			printf("Getting status.\n");
+			cout << "Ask:\tGetting status\n\n";
 			packet.field.packetType = ASK_STATUS;
 			communicator.sendCommand(&packet);
 			pause();
+
+			cout << "Received:\n";
 			if (communicator.readCommand(&packet) == ACK_STATUS) {
-				printf("Lat = %3.6f, Lon = %3.6f, Yaw = %3.6f\n", 
-					packet.field.latitude,
-					packet.field.longitude,
-					packet.field.yaw);
-				printf("Status:\n");
+				     cout << "\tLat: " << fixed << setprecision(6) << packet.field.latitude
+				     << " Lon: " << packet.field.longitude
+				     << " Yaw: " << packet.field.yaw << "\n";
+				
+				cout << "\t";
 				if (packet.field.statusBit & 0x01)
-					printf("Self Test Passed.\n");
+					cout << "Self Test:  Passed.\n";
 				else
-					printf("Self Test Failed.\n");
+					cout << "Self Test:  Failed.\n";
 
+				cout << "\t";
 				if (packet.field.statusBit & 0x02)
-					printf("XKF Valid.\n");
+					cout << "XKF:        Valid.\n";
 				else 
-					printf("XKF Invalid.\n");
+					cout << "XKF:        Invalid.\n";
 
+				cout << "\t";
 				if (packet.field.statusBit & 0x04)
-					printf("GPS Fixed\n");
+					cout << "GPS:        Fixed\n";
 				else 
-					printf("GPS Not Fixed.\n");
+					cout << "GPS:        Not Fixed.\n";
 
+				cout << "\t";
 				if (packet.field.statusBit & 0x08)
-					printf("Navigation in Progress.\n");
+					cout << "Navigation: in Progress.\n";
 				else
-					printf("Navigation Stopped.\n");
+					cout << "Navigation: Stopped.\n";
+
+				cout << "\t";
+				cout << "Current path point number: "
+				     << (signed int)packet.field.pathPointNumber << "\n";
 			
-				printf("Total path point number = %d\n",
-					packet.field.totalPathPointNumber);
+				cout << "\t";
+				cout << "Total path point number:   "
+				     << (signed int)packet.field.totalPathPointNumber << "\n";
+				cout << "\n";
+			} else {
+				cout << "\tError: No ack message received...\n";
 			}
 
-		/* Command mode, which requires pressing of LT */
+		/* Command mode, which requires LT pressed. */
 		} else if (btns.AxisLT() > 20000) {
 
 			StopTimer(delay);
 
+			/* Adding the coordinate received from querying as the path points. */
 			if (btns.BtnRB()) {
-				printf("Adding path point : Lat = %3.6f, Lon = %3.6f\n",
-					packet.field.latitude,
-					packet.field.longitude);
+				cout << "Ask:\tAdding path point\n"
+				     << "Lat: " << packet.field.latitude << " Lon: " << packet.field.longitude << "\n\n";
+
 				packet.field.packetType = ADD_PATH;
 				communicator.sendCommand(&packet);
 				usleep(PERIOD);
-				if (communicator.readCommand(&packet) == ACK_OK) {
-					printf("Total path point number : %d\n",
-						packet.field.totalPathPointNumber);
-				} else {
-					printf("No ack message received...\n");
-				}
+				ack = communicator.readCommand(&packet);
 
-			} else if (btns.BtnStart()) {
-				printf("Toggle navigation.\n");
+				cout << "Received:\n";
+				if (ack == ACK_OK) {
+					cout << "\tSuccess: Total path point number: " << packet.field.totalPathPointNumber << "\n";
+				} else {
+					cout << "\tError: No ack message received...\n";
+				}
+				cout << "\n";
+
+			/* Toggle Navigation. */
+			} else if (btns.BtnXBOX()) {
+				cout << "Ask:\tToggleNavigation\n\n";
 				packet.field.packetType = TOGGLE_NAV;
 				communicator.sendCommand(&packet);
 				usleep(PERIOD);
-				if (communicator.readCommand(&packet) == ACK_OK) {
-					printf("Total path point number : %d\n",
-						packet.field.totalPathPointNumber);
-					printf("Current path point number : %d\n",
-						packet.field.pathPointNumber);
-					if (packet.field.statusBit & 0x08)
-						printf("Start navigation.\n");
-					else 
-						printf("Stop navigation.\n");
-				} else {
-					printf("No ack message received...\n");
-				}
+				ack = communicator.readCommand(&packet);
 
+				cout << "Received:\n";
+				if (ack == ACK_OK) {
+					cout << "\tCurrent path point number: "
+					     << packet.field.pathPointNumber << "\n";
+					cout << "\tTotal path point number:   "
+					     << packet.field.totalPathPointNumber << "\n";
+					if (packet.field.statusBit & 0x08)
+						cout << "\tStart navigation.\n";
+					else 
+						cout << "\tStop navigation.\n";
+				} else if (ack == ACK_NOK) {
+					cout << "\tError: No path point exist, navigation cancelled.\n";
+				} else {
+					cout << "\tError: No ack message received...\n";
+				}
+				cout << "\n";
+
+			/* Skip to the next current path target. */
+			} else if (btns.BtnStart()) {
+				cout << "Ask:\tSkip to the next path point\n\n";
+				packet.field.packetType = SKIP;
+				communicator.sendCommand(&packet);
+				usleep(PERIOD);
+				ack = communicator.readCommand(&packet);
+				
+				cout << "Received:\n";
+				if (ack == ACK_OK) {
+					cout << "\tSuccess: Skip to the next path point.\n"
+					     << "\t         Current path point number: "
+					     << packet.field.pathPointNumber << "\n"
+					     << "\t         Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
+        
+				} else if (ack == ACK_NOK) {
+					cout << "\tError: Unable to skip.\n"
+					     << "\t       Current path point number: "
+					     << packet.field.pathPointNumber << "\n"
+					     << "\t       Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
+				} else {
+					cout << "\tError: No ack message received...\n";
+				}
+				cout << "\n";
+
+			/* Reset */
+			} else if (btns.BtnBack()) {
+				cout << "Ask:\tReset path point index\n\n";
+				packet.field.packetType = RESET;
+				communicator.sendCommand(&packet);
+				usleep(PERIOD);
+				ack = communicator.readCommand(&packet);
+				
+				cout << "Received:\n";
+				if (ack == ACK_OK) {
+					cout << "\tSuccess: Reset path point index.\n"
+					     << "\t         Current path point number: "
+					     << packet.field.pathPointNumber << "\n"
+					     << "\t         Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
+        
+				} else {
+					cout << "\tError: No ack message received...\n";
+				}
+				cout << "\n";
+			/* Clear all path points. */
 			} else if (btns.BtnY()) {
-				printf("Clear all path points\n");
+				cout << "Ask:\tClear all path points\n\n";
 				packet.field.packetType = CLEAR_PATH;
 				communicator.sendCommand(&packet);
 				usleep(PERIOD);
-				if (communicator.readCommand(&packet) == ACK_OK) {
-					printf("Current total path point number : %d\n",
-						packet.field.totalPathPointNumber);
+				ack = communicator.readCommand(&packet);
+
+				cout << "Received:\n";
+				if (ack == ACK_OK) {
+					cout << "\tSuccess:";
 				} else {
-					printf("No ack message received...\n");
+					cout << "\tError: No ack message received...\n";
 				}
+				cout << "\n";
         
+			/* Read path from file. */
 			} else if (btns.BtnA()) {
+				cout << "Ask:\tRead path from file: Please enter the name:\n";
 				packet.field.packetType = READ_PATH;
-				printf("Please enter the file name of path you want to read: \n");
 				scanf("%s", packet.field.pathName);
+				cout << "\n";
 
 				communicator.sendCommand(&packet);
 				usleep(PERIOD);
-				PacketType ack = communicator.readCommand(&packet);
+				ack = communicator.readCommand(&packet);
+
+				cout << "Received:\n";
 				if (ack == ACK_OK) {
-					printf("File successfully read.\n");
-					printf("Total path point number: %d\n",
-						packet.field.totalPathPointNumber);
+					cout << "\tSuccess: File read.\n"
+					     << "\t         Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
         
 				} else if (ack == ACK_NOK) {
-					printf("File reading failed.\n");
-					printf("Total path point number: %d\n",
-						packet.field.totalPathPointNumber);
-        
+					cout << "\tError: File not read.\n"
+					     << "\t       Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
 				} else {
-					printf("No ack message received...\n");
+					cout << "\tError: No ack message received...\n";
 				}
+				cout << "\n";
 			
+			/* Save path points into file. */
 			} else if (btns.BtnX()) {
+				cout << "Ask:\tSave path to file: Please enter the name:\n";
 				packet.field.packetType = SAVE_PATH;
-				printf("Please enter the file name of the path you want to save: \n");
 				scanf("%s", packet.field.pathName);
+				cout << "\n";
 
 				communicator.sendCommand(&packet);
 				usleep(PERIOD);
-				PacketType ack = communicator.readCommand(&packet);
+				ack = communicator.readCommand(&packet);
+
+				cout << "Received:\n";
 				if (ack == ACK_OK) {
-					printf("File successfully saved.\n");
-					printf("Total path point number: %d\n",
-						packet.field.totalPathPointNumber);
+					cout << "\tSuccess: File saved.\n"
+					     << "\t         Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
         
 				} else if (ack == ACK_NOK) {
-					printf("File saving failed.\n");
-					printf("Total path point number: %d\n",
-						packet.field.totalPathPointNumber);
-        
+					cout << "\tError: File not saved.\n"
+					     << "\t       Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
 				} else {
-					printf("No ack message received...\n");
+					cout << "\tError: No ack message received...\n";
 				}
+				cout << "\n";
+
+			/* Remove path point. */
 			} else if (btns.BtnB()) {
+				cout << "Ask:\tRemove path point: Please enter the index of any path point:\n";
 				packet.field.packetType = REMOVE_PATH;
-				printf("Please enter the number of point you want to remove: \n");
 				int inputValue;
 				scanf("%d", &inputValue);
 
 				packet.field.pathPointNumber = (unsigned char)inputValue;
 				communicator.sendCommand(&packet);
 				usleep(PERIOD);
-				PacketType ack = communicator.readCommand(&packet);
+				ack = communicator.readCommand(&packet);
+				cout << "Received:\n";
 				if (ack == ACK_OK) {
-					printf("Point successfully removed.\n");
-					printf("Total path point number: %d\n",
-						packet.field.totalPathPointNumber);
+					cout << "\tSuccess: Path point removed.\n"
+					     << "\t         Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
         
 				} else if (ack == ACK_NOK) {
-					printf("Point removing failed.\n");
-					printf("Total path point number: %d\n",
-						packet.field.totalPathPointNumber);
-        
+					cout << "\tError: Path point not removed.\n"
+					     << "\t       Total path point number: "
+					     << packet.field.totalPathPointNumber << "\n";
 				} else {
-					printf("No ack message received...\n");
+					cout << "\tError: No ack message received...\n";
 				}
+				cout << "\n";
 			}
+
 			StartTimer(delay);
 
 		/* LT is released */

@@ -301,11 +301,10 @@ int main(void)
 	/* Path point class */
 	PathPoints path;
 
-	/* Debug!!!
-	path.add(23.694801, 120.536301);
-	path.add(23.694802, 120.536302);
-	path.add(23.694803, 120.536303);
-	*/
+	/* Debug!!! */
+	path.add(23.69481, 120.53631);
+	path.add(23.69482, 120.53632);
+	path.add(23.69483, 120.53633);
 
 	/* Error counter */
 	int cmdErrorCounter = 0;
@@ -344,11 +343,10 @@ int main(void)
 		double lonMeasured = gpsData.longitude;
 		pthread_mutex_unlock(&(gpsData.mutex));
 
-		/* Debug!!!!
+		/* Debug!!! */
 		yaw = 0.0;
 		latMeasured = 23.6948;
 		lonMeasured = 120.5363;
-		*/
 		
 
 		/* Check the status of gps. If status OK, turn led2 on. */
@@ -432,6 +430,7 @@ int main(void)
 				packet.field.statusBit &= ~0x08;
 			}
 			packet.field.totalPathPointNumber = path.size();
+			packet.field.pathPointNumber = (unsigned char)(path.getCurrentIndex() + 1);
 			communicator.sendCommand(&packet);
 			break;
 
@@ -466,15 +465,42 @@ int main(void)
 				packet.field.statusBit &= ~0x08;
 			}
 
-			packet.field.pathPointNumber = (unsigned char)path.getCurrentIndex();
+			packet.field.pathPointNumber = (unsigned char)(path.getCurrentIndex() + 1);
 			packet.field.totalPathPointNumber = path.size();
 			communicator.sendCommand(&packet);
 			break;
 
 		case RESET:
-			syslog.write("System: Reset!\n");
+			syslog.write("System: Reset path point index!\n");
+
+			if (path.setCurrentIndex(-1) == -2) {
+				printf("unable to set index!\n");
+			}
+			navigationStart = false;
+
 			packet.field.packetType = ACK_OK;
+			packet.field.pathPointNumber = path.getCurrentIndex() + 1;
 			packet.field.totalPathPointNumber = path.size();
+			if (navlog.close() == -1) {
+				syslog.write("System: Unable to close navigation log: Not open.\n");
+			} else {
+				syslog.write("System: Close navigation log.\n");
+			}
+				
+			communicator.sendCommand(&packet);
+			break;
+
+		case SKIP:
+			if (path.setCurrentIndex(path.getCurrentIndex() + 1) == -2) { // Error
+				packet.field.packetType = ACK_NOK;
+				syslog.write("System: Error: Unable to skip.\n");
+			} else {
+				packet.field.packetType = ACK_OK;
+				syslog.write("System: Skip to the next path point.\n");
+			}
+			packet.field.pathPointNumber = (unsigned char)(path.getCurrentIndex() + 1);
+			packet.field.totalPathPointNumber = path.size();
+
 			communicator.sendCommand(&packet);
 			break;
 
@@ -523,8 +549,9 @@ int main(void)
 
 			/* For the first time */
 			if (path.getCurrentIndex() == -1) {
-				navlog.open();
 				path.setCurrentIndex(0);
+				navlog.open();
+				syslog.write("System: Open navigation log.\n");
 			}
 			
 			/* Read target coor. from current index. */
@@ -535,7 +562,7 @@ int main(void)
 			if (distance < POS_ERR) {
 				/* Read the next target coor. */
 				if (path.getNext(latTarget, lonTarget) == -1) { // Reached the final
-					syslog.write("System: Reaching the final path point, stop navigation.\n");
+					syslog.write("System: Reaching the final path point, stop navigation and close the navigation log.\n");
 					path.setCurrentIndex(0);
 					navigationStart = false;
 					
