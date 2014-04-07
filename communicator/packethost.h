@@ -50,6 +50,11 @@ public:
 			addDataNumber(0);
 			addPacketType(RESET);
 			break;
+
+		case SKIP:
+			addDataNumber(0);
+			addPacketType(SKIP);
+			break;
 			
 		case SHOW_PATH:
 			addDataNumber(0);
@@ -106,7 +111,8 @@ public:
 			memcpy(&(field.longitude), rawData+12, 8);
 			memcpy(&(field.yaw), rawData+20, 8);
 			field.statusBit = rawData[28];
-			field.totalPathPointNumber = rawData[29];
+			field.pathPointNumber = rawData[29];
+			field.totalPathPointNumber = rawData[30];
 			break;
         
 		default:

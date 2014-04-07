@@ -22,13 +22,13 @@ enum PacketType{
 	   Length = 1
 	   packet[4] = Number of path point
 	*/
-	ACK_OK 		= 0x94,
+	ACK_OK 		= 0x90,
 
 	/* 
 	   ACK_NOK : Invalid requirement
 	   Length = 0
 	*/
-	ACK_NOK 	= 0x99,
+	ACK_NOK 	= 0x91,
 
 	/* 
 	   Return the status of the sensor
@@ -39,7 +39,7 @@ enum PacketType{
 	   packet[28] = Sensor status bit
 	   packet[29] = Totoal path point number
 	*/
-	ACK_STATUS	= 0x93,
+	ACK_STATUS	= 0x92,
 
 	/* 
 	   Sending the latitude and longitude of each path point back to the host
@@ -49,7 +49,7 @@ enum PacketType{
 	   packet[6..13] = latitude of the path point
 	   packet[14..21] = longitude of the path point
 	*/
-	ACK_SHOW_PATH	= 0x97,
+	ACK_SHOW_PATH	= 0x93,
 
 	/* Timeout */
 	TIMEOUT		= 0,
@@ -62,51 +62,56 @@ enum PacketType{
 	   packet[4] = speed command (from -100 to 100)
 	   packet[5] = steer command (from -100 to 100)
 	*/
-	RC_COMMAND	= 0x02,
+	RC_COMMAND	= 0xE0,
 
 	/* 
 	   Ask Yun Trooper II to read the path from a specific file name
 	   Length = depend on the length of file name 
 	   packet[4..N] = file name
 	*/
-	READ_PATH	= 0x06,
+	READ_PATH	= 0xE1,
 
 	/* 
 	   Clear all path points
 	   Length = 0
 	*/
-	CLEAR_PATH	= 0x16,
+	CLEAR_PATH	= 0xE2,
 
 	/* 
 	   Save current path points to a specific file
 	   Legnth = depend on the length of file name
 	   packet[4..N] = file name
 	*/
-	SAVE_PATH	= 0x26,
+	SAVE_PATH	= 0xE3,
 
 	/* 
 	   Asking for status
 	   Length = 0
 	*/
-	ASK_STATUS	= 0x1A,
+	ASK_STATUS	= 0xE4,
 
 	/* 
 	   Toggle navigation
 	   Length = 0
 	*/
-	TOGGLE_NAV	= 0x1B,
+	TOGGLE_NAV	= 0xE5,
 
 	/* 
 	   Reset Yun Trooper II
 	   Length = 0
 	*/
-	RESET		= 0xAA,
+	RESET		= 0xE6,
+
+	/* 
+	   Skip to the next target path point
+	*/
+	SKIP		= 0XE7,
 
 	/* 
 	   Show all path point
 	   Length = 0
 	*/
-	SHOW_PATH	= 0xBB,
+	SHOW_PATH	= 0XE8,
 
 	/* 
 	   Adding path point from the command
@@ -114,14 +119,14 @@ enum PacketType{
 	   packet[4..11] = latitude
 	   packet[12..19] = longitude
 	*/
-	ADD_PATH	= 0xCC,
+	ADD_PATH	= 0xE9,
 
 	/* 
 	   Remove specific path point number from the path point set
 	   Length = 1
 	   packet[4] = number of path point
 	*/
-	REMOVE_PATH	= 0xDD,
+	REMOVE_PATH	= 0xEA,
 	
 	/* Error Type */
 	ERROR_CMD	= 0xFF

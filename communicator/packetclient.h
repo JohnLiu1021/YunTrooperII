@@ -27,13 +27,14 @@ public:
 			break;
         
 		case ACK_STATUS:
-			addDataNumber(26);
+			addDataNumber(27);
 			addPacketType(ACK_STATUS);
 			memcpy(rawData+4, &(field.latitude), 8);
 			memcpy(rawData+12, &(field.longitude), 8);
 			memcpy(rawData+20, &(field.yaw), 8);
 			rawData[28] = field.statusBit;
-			rawData[29] = (unsigned char)field.totalPathPointNumber;
+			rawData[29] = (unsigned char)field.pathPointNumber;
+			rawData[30] = (unsigned char)field.totalPathPointNumber;
 			break;
         
 		case ACK_SHOW_PATH:
@@ -94,6 +95,10 @@ public:
         
 		case RESET:
 			field.packetType = RESET;
+			break;
+
+		case SKIP:
+			field.packetType = SKIP;
 			break;
 
 		case SHOW_PATH:
