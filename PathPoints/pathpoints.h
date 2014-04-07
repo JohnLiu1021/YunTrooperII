@@ -15,13 +15,7 @@ private:
 	};
 
 	std::vector<struct Point> _pathPoints;
-	size_t _currentIndex;
-
-	static const double a;
-	static const double f;
-	static const double e_square;
-	static const double b;
-
+	int _currentIndex;
 public:
 	PathPoints();
 
@@ -41,12 +35,8 @@ public:
 	int getNext(double *, double *);
 	int getNext(double &, double &);
 
-	int get(const int, double *, double *);
-	int get(const int, double &, double &);
-
-	static double Lat2Meter(double latRef, double latTarget);
-	static double Lon2Meter(double latRef, double lonRef, double lonTarget);
-	static double calculateAngle(double latRef, double lonRef, double LatTarget, double lonTarget);
+	int get(double *, double *, int index = -1);
+	int get(double &, double &, int index = -1);
 
 };
 #endif
