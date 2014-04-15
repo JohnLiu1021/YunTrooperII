@@ -45,6 +45,12 @@ public:
 			memcpy(rawData+6, &(field.latitude), 8);
 			memcpy(rawData+14, &(field.longitude), 8);
 			break;
+
+		case ACK_GPSSTATUS:
+			addDataNumber(sizeof(CmtGpsStatus));
+			addPacketType(ACK_GPSSTATUS);
+			memcpy(rawData+4, &(field.gpsStatus), sizeof(CmtGpsStatus));
+			break;
         
 		default:
 			return -1;
@@ -87,6 +93,10 @@ public:
         
 		case ASK_STATUS:
 			field.packetType = ASK_STATUS;
+			break;
+
+		case ASK_GPSSTATUS:
+			field.packetType = ASK_GPSSTATUS;
 			break;
         
 		case TOGGLE_NAV:

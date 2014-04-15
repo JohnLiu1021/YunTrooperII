@@ -5,7 +5,8 @@
 #define YT_PACKET_H 1
 
 #include <string.h> // memcpy
-#define PACKET_SIZE 40
+#include "MTiG/cmtdef.h" // CmtGpsStatus structure
+#define PACKET_SIZE 128
 
 namespace YT {
 
@@ -50,6 +51,12 @@ enum PacketType{
 	   packet[14..21] = longitude of the path point
 	*/
 	ACK_SHOW_PATH	= 0x93,
+
+	/*
+	 * Sending GPS status structure back to host
+	 * packet[4..67] = GPS status structure
+	*/
+	ACK_GPSSTATUS	= 0x94,
 
 	/* Timeout */
 	TIMEOUT		= 0,
@@ -127,6 +134,12 @@ enum PacketType{
 	   packet[4] = number of path point
 	*/
 	REMOVE_PATH	= 0xEA,
+
+	/*
+	 * Asking GPS status
+	 * Length = 0
+	*/
+	ASK_GPSSTATUS	= 0xEB,
 	
 	/* Error Type */
 	ERROR_CMD	= 0xFF
@@ -141,6 +154,7 @@ public:
 	virtual PacketType resolveData() = 0;
 
 	struct DataField { 
+		PacketType packetType;
 		char speed;
 		char steer;
 		char pathName[20];
@@ -150,7 +164,7 @@ public:
 		double latitude;
 		double longitude;
 		double yaw;
-		PacketType packetType;
+		CmtGpsStatus gpsStatus;
 	} field;
 	
 	/* Raw data array */

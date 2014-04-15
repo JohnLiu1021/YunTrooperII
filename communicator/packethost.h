@@ -41,6 +41,11 @@ public:
 			addPacketType(ASK_STATUS);
 			break;
 
+		case ASK_GPSSTATUS:
+			addDataNumber(0);
+			addPacketType(ASK_GPSSTATUS);
+			break;
+
 		case TOGGLE_NAV:
 			addDataNumber(0);
 			addPacketType(TOGGLE_NAV);
@@ -113,6 +118,11 @@ public:
 			field.statusBit = rawData[28];
 			field.pathPointNumber = rawData[29];
 			field.totalPathPointNumber = rawData[30];
+			break;
+
+		case ACK_GPSSTATUS:
+			field.packetType = ACK_GPSSTATUS;
+			memcpy(&(field.gpsStatus), rawData+4, sizeof(CmtGpsStatus));
 			break;
         
 		default:

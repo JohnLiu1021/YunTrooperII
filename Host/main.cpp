@@ -72,59 +72,33 @@ int main(void)
 		pause();
 		xbox.readButtons(&btns);
 
-		/* Query of status can be triggered at any time */
-		if (btns.BtnLB()) {
-			cout << "Ask:\tGetting status\n\n";
-			packet.field.packetType = ASK_STATUS;
-			communicator.sendCommand(&packet);
-			pause();
-
-			cout << "Received:\n";
-			if (communicator.readCommand(&packet) == ACK_STATUS) {
-				     cout << "\tLat: " << fixed << setprecision(6) << packet.field.latitude
-				     << " Lon: " << packet.field.longitude
-				     << " Yaw: " << packet.field.yaw << "\n";
-				
-				cout << "\t";
-				if (packet.field.statusBit & 0x01)
-					cout << "Self Test:  Passed.\n";
-				else
-					cout << "Self Test:  Failed.\n";
-
-				cout << "\t";
-				if (packet.field.statusBit & 0x02)
-					cout << "XKF:        Valid.\n";
-				else 
-					cout << "XKF:        Invalid.\n";
-
-				cout << "\t";
-				if (packet.field.statusBit & 0x04)
-					cout << "GPS:        Fixed\n";
-				else 
-					cout << "GPS:        Not Fixed.\n";
-
-				cout << "\t";
-				if (packet.field.statusBit & 0x08)
-					cout << "Navigation: in Progress.\n";
-				else
-					cout << "Navigation: Stopped.\n";
-
-				cout << "\t";
-				cout << "Current path point number: "
-				     << (signed int)packet.field.pathPointNumber << "\n";
-			
-				cout << "\t";
-				cout << "Total path point number:   "
-				     << (signed int)packet.field.totalPathPointNumber << "\n";
-				cout << "\n";
-			} else {
-				cout << "\tError: No ack message received...\n";
-			}
-
 		/* Command mode, which requires LT pressed. */
-		} else if (btns.AxisLT() > 20000) {
+		if (btns.AxisLT() > 20000) {
 
 			StopTimer(delay);
+
+			/* Under command mode, LB is requesting GPS status instead of all status. */
+			if (btns.BtnLB()) {
+				cout << "Ask:\tGetting GPS status\n\n";
+				packet.field.packetType = ASK_GPSSTATUS;
+				communicator.sendCommand(&packet);
+				usleep(PERIOD);
+				ack = communicator.readCommand(&packet);
+
+				cout << "Received:\n";
+				if (ack == ACK_GPSSTATUS) {
+					for (int i=0; i<CMT_MAX_SVINFO; i++) {
+						cout << "\t" << setw(2) << i << ": "
+						     << "ID: " << dec << setw(3) << static_cast<int>(packet.field.gpsStatus.m_svInfo[i].m_id) << ", "
+						     << "BM: 0x" << hex << static_cast<int>(packet.field.gpsStatus.m_svInfo[i].m_navigationStatus) << ", "
+						     << "Q : " << dec << static_cast<int>(packet.field.gpsStatus.m_svInfo[i].m_signalQuality) << ", "
+						     << "Str: " << dec << static_cast<int>(packet.field.gpsStatus.m_svInfo[i].m_signalStrength) << "\n";
+					}
+					cout << endl;
+				} else {
+					cout << "\tError: No ack message received...\n";
+				}
+			}
 
 			/* Adding the coordinate received from querying as the path points. */
 			if (btns.BtnRB()) {
@@ -313,7 +287,56 @@ int main(void)
 
 			StartTimer(delay);
 
-		/* LT is released */
+		/* Query of status can be triggered at any time */
+		} else if (btns.BtnLB()) {
+			cout << "Ask:\tGetting status\n\n";
+			packet.field.packetType = ASK_STATUS;
+			communicator.sendCommand(&packet);
+			pause();
+
+			cout << "Received:\n";
+			if (communicator.readCommand(&packet) == ACK_STATUS) {
+				     cout << "\tLat: " << fixed << setprecision(6) << packet.field.latitude
+				     << " Lon: " << packet.field.longitude
+				     << " Yaw: " << packet.field.yaw << "\n";
+				
+				cout << "\t";
+				if (packet.field.statusBit & 0x01)
+					cout << "Self Test:  Passed.\n";
+				else
+					cout << "Self Test:  Failed.\n";
+
+				cout << "\t";
+				if (packet.field.statusBit & 0x02)
+					cout << "XKF:        Valid.\n";
+				else 
+					cout << "XKF:        Invalid.\n";
+
+				cout << "\t";
+				if (packet.field.statusBit & 0x04)
+					cout << "GPS:        Fixed\n";
+				else 
+					cout << "GPS:        Not Fixed.\n";
+
+				cout << "\t";
+				if (packet.field.statusBit & 0x08)
+					cout << "Navigation: in Progress.\n";
+				else
+					cout << "Navigation: Stopped.\n";
+
+				cout << "\t";
+				cout << "Current path point number: "
+				     << (signed int)packet.field.pathPointNumber << "\n";
+			
+				cout << "\t";
+				cout << "Total path point number:   "
+				     << (signed int)packet.field.totalPathPointNumber << "\n";
+				cout << "\n";
+			} else {
+				cout << "\tError: No ack message received...\n";
+			}
+
+		/* LT is released, sending rc signal */
 		} else {
 			signed char steer = -(btns.AxisX() * 100) / 32767;
 			signed char speed = -(btns.AxisZ2() * 100) / 32767;
