@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+#define MTIG_FREQ 20
+
 #define EXIT_ERROR(X) {VFHlog.write("Error %d occured during "X": %s\n", serial.getLastResult(), xsensResultText(serial.getLastResult())); exit(EXIT_FAILURE);}
 
 int quit = 0;
@@ -40,25 +42,29 @@ using namespace YT;
 pthread_mutex_t mutex;
 double GlobalYaw;
 
-void *GPSRead(void *)
+void *GPSRead(void *p)
 {
 	Cmt3 serial;
 	Packet reply(1,0);
 	(void) signal(SIGINT, ctrlchandler);
 
-	if(serial.openPort("/dev/ttyUSB0", B115200) != XRV_OK)
+	if (serial.openPort("/dev/ttyUSB0", B115200) != XRV_OK)
 		EXIT_ERROR("open");
 	
-	int timeout = 1000;
-	if(serial.setTimeoutMeasurement(timeout) != XRV_OK)
+	int timeout = 500;
+	if (serial.setTimeoutMeasurement(timeout) != XRV_OK)
 		EXIT_ERROR("set timeout");
 	
-	CmtDeviceMode mode(CMT_OUTPUTMODE_ORIENT | 
+	CmtDeviceMode2 mode(CMT_OUTPUTMODE_STATUS |
+			   CMT_OUTPUTMODE_ORIENT,
+
 			   CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT |
 			   CMT_OUTPUTSETTINGS_ORIENTMODE_EULER |
-			   CMT_OUTPUTSETTINGS_DATAFORMAT_FP1632, 
-			   20);
-	if(serial.setDeviceMode(mode, false, CMT_DID_BROADCAST)) 
+			   CMT_OUTPUTSETTINGS_DATAFORMAT_FP1632);
+
+	mode.setSampleFrequency(MTIG_FREQ);
+
+	if (serial.setDeviceMode2(mode, false, CMT_DID_BROADCAST))
 		EXIT_ERROR("set device mode");
 	
 	CmtMatrix matrix;
@@ -69,7 +75,7 @@ void *GPSRead(void *)
 		EXIT_ERROR("set alignment matrix");
 	}
 
-	if(serial.gotoMeasurement())
+	if (serial.gotoMeasurement())
 		EXIT_ERROR("goto measurement");
 	//VFHlog.write("Now in measurement mode\n");
 
@@ -107,7 +113,6 @@ public:
 		optionTemp.value = 40;
 		this->options.push_back(optionTemp);
 
-
 		optionTemp.name = "SteeringGain";
 		optionTemp.value = 4;
 		this->options.push_back(optionTemp);
@@ -118,6 +123,18 @@ public:
 
 		optionTemp.name = "LowThreshold";
 		optionTemp.value = 0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "AngleThreshold";
+		optionTemp.value = 30.0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "CollisionDetectingAngle";
+		optionTemp.value = 50.0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "CollisionDetectingDistance";
+		optionTemp.value = 500.0;
 		this->options.push_back(optionTemp);
 
 		optionTemp.name = "A";
@@ -156,16 +173,21 @@ public:
 
 int main(void)
 {
-	VFHlog.open("VFHlog");
+	if (VFHlog.open("/root/VFHlog"))
+		printf("Erro!\n");
 
-	sleep(1);
+	LogFile laserLog;
+	laserLog.timeStampOFF();
+	laserLog.counterStampOFF();
+	laserLog.setDir("/root/LaserData");
+
 	(void)signal(SIGINT, ctrlchandler);
 	atexit(exitFunc);
 	
 	YT::Drive drive;
 
-	BBB::GPIO btn1(66, 0);
-	btn1.setEdge("rising");
+	BBB::GPIO btn2(67, 0);
+	btn2.setEdge("rising");
 	led1.value(0);
 	led2.value(1);
 
@@ -219,6 +241,18 @@ int main(void)
 			VFHlog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
 		}
         
+		if (config.search("AngleThreshold", value1)) {
+			vfh.setAngleThreshold(value1);
+			VFHlog.write("AngleThreshold: %f\n", vfh.getAngleThreshold());
+		}
+
+		if (config.search("CollisionDetectingAngle", value1) &&
+		    config.search("CollisionDetectingDistance", value2)) {
+			vfh.setCollisionArea(value1, value2);
+			vfh.getCollisionArea(value1, value2);
+			VFHlog.write("Collision Area: %f %f\n", value1, value2); 
+		}
+        
 		if (config.search("A", value1) &&
 		    config.search("B", value2) ) {
 			vfh.setVFHPlusParameter(value1, value2);
@@ -245,7 +279,11 @@ int main(void)
 
 	double targetOrientation = 0.0;
 	bool flag_startNav = false;
+	
+	VFHlog.flush();
 
+	int previousBtnStatus = 0;
+	int presentBtnStatus = 0;
 	while(!quit) {
 		// Update VFH algorithm.
 		vfh.update();
@@ -257,15 +295,30 @@ int main(void)
 		pthread_mutex_unlock(&mutex);
 
 		// Detect Button
-		if (btn1.value()) {
-			{
-				if (!flag_startNav) {
-					targetOrientation = yaw;
-					flag_startNav = true;
-				} else {
-					targetOrientation = 0.0;
-					flag_startNav = false;
-				}
+		presentBtnStatus = btn2.value();
+
+		if (presentBtnStatus != previousBtnStatus) {
+			if (presentBtnStatus) {
+				targetOrientation = yaw;
+				flag_startNav = true;
+
+				/*
+				laserLog.open();
+				std::vector<double> angle;
+				std::vector<double>::iterator it;
+				vfh.getCorrespondAngle(angle);
+				laserLog.write("%d 0\n", angle.size()); // Zero padding
+                        
+				for (it=angle.begin(); it!=angle.end(); it++)
+					laserLog.write("%3.4f ", *it);
+				laserLog.write("\n");
+
+				sleep(5);
+				*/
+			} else {
+				targetOrientation = 0.0;
+				flag_startNav = false;
+				//laserLog.close();
 			}
 		}
 
@@ -278,23 +331,46 @@ int main(void)
 				target_local += 360;
 
 			double commandAngle = vfh.calculateDirection(target_local);
-			if (commandAngle > 180) {
-				drive.setSteer(0);
-				drive.setSpeed(0);
-				led1.toggle();
-			} else {
+			if (commandAngle <= 180) {
 				int speedValue = (1 - vfh.getDensity()) * MaxSpeed;
 				if (speedValue < MinSpeed)
 					speedValue = MinSpeed;
 				drive.setSteer(commandAngle * SteeringGain);
 				drive.setSpeed(speedValue);
 				led1.value(1);
+			} else {
+				if (vfh.collisionDetected()) {
+					drive.setSteer(0);
+					drive.setSpeed(0);
+					led1.toggle();
+					led2.toggle();
+				} else {
+					drive.setSpeed(MinSpeed);
+					led1.toggle();
+					led2.value(1);
+				}
+
+				/* No detection zone!
+				drive.setSpeed(MinSpeed);
+				led1.toggle();
+				*/
 			}
+
+			/*
+			std::vector<long> data;
+			std::vector<long>::iterator it;
+			vfh.getMeasuredDistance(data);
+			for (it=data.begin(); it!=data.end(); it++)
+				laserLog.write("%4d ", *it);
+			laserLog.write("%3.2f %3.2f\n", target_local, commandAngle);
+			*/
 		} else {
 			led1.value(0);
 			drive.setSpeed(0);
 			drive.setSteer(0);
 		}
+
+		previousBtnStatus = presentBtnStatus;
 			
 	}
 	pthread_join(thread, NULL);

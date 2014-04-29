@@ -16,17 +16,21 @@ VFHPlus::VFHPlus()
 
 	_densityThreshold = 1000;
 	_bodyWidth = 400;
+	_angleThreshold = 30.0;
 
 	_skipStep = 4;
 	_minAngle = -120.0;
 	_maxAngle = 120.0;
+
+	_spanningAngle = 50;
+	_extendedDistance = 500;
 
 	_measuredDistance.clear();
 	_correspondAngle.clear();
 	_maskedDistance.clear();
 
 	_sector.clear();
-	_lastDirection = 0.0;
+	_lastSteer = 0.0;
 }
 
 VFHPlus::~VFHPlus(){};
@@ -108,6 +112,39 @@ int VFHPlus::getBodyWidth()
 	return _bodyWidth;
 }
 
+void VFHPlus::setAngleThreshold(const double deg)
+{
+	_angleThreshold = deg * (M_PI/180.0);
+}
+
+double VFHPlus::getAngleThreshold()
+{
+	return (_angleThreshold * (180.0 / M_PI));
+}
+
+void VFHPlus::setCollisionArea(const double deg, const double mm)
+{
+	_spanningAngle = deg * (M_PI/180.0);
+	_extendedDistance = mm;
+}
+
+void VFHPlus::setCollisionArea(std::vector<long> v)
+{
+	_collisionDistance = v;
+}
+
+void VFHPlus::getCollisionArea(double *deg, double *distance)
+{
+	*deg = _spanningAngle * (180.0 / M_PI);
+	*distance = _extendedDistance;
+}
+
+void VFHPlus::getCollisionArea(double &deg, double &distance)
+{
+	deg = _spanningAngle * (180.0 / M_PI);
+	distance = _extendedDistance;
+}
+
 void VFHPlus::setRadiusOfCurvature(double radius)
 {
 	_radius = radius;
@@ -159,15 +196,7 @@ bool VFHPlus::start()
 		double angle = this->step2rad(i);
 		_correspondAngle.push_back(angle);
 
-		/* 
-		   Masked histogram without width
-		double rho = fabs(2*_radius*sin(angle));
-		_maskedDistance.push_back(lround(rho));
-		*/
-
-		/* 
-		   Masked histogram with width
-		*/
+		// Masked histogram with width
 		angle = fabs(angle);
 		double a = fabs(_radius * sin(angle));
 		double b = (_radius*_radius) * (sin(angle) * sin(angle));
@@ -175,6 +204,13 @@ bool VFHPlus::start()
 
 		double ans = a + sqrt(b);
 		_maskedDistance.push_back(lround(ans));
+
+		// Detection distance: Fan area
+		if (angle > -(_spanningAngle/2) && angle < (_spanningAngle/2))
+			_collisionDistance.push_back((long)_extendedDistance);
+		else
+			_collisionDistance.push_back(0);
+		
 	}
 
 	/* 
@@ -196,16 +232,15 @@ bool VFHPlus::update()
 		return false;
 	}
 
-	/* 
-	   Correct the range of data into the range between 20 to 4000,
-	*/
+	 
+	// Correct the range of data into the range between 20 to 4000,
 	std::vector<long>::iterator it = _measuredDistance.begin();
 	for (; it!=_measuredDistance.end(); it++) {
 		if (*it > 4000 || *it < 20)
 			*it = 4000;
 	}
 
-	// Calculate Vector Field Histogram.
+	// Enter the loop of calculation for VFH
 	_sector.clear();
 	struct Sector SectorTemp;
 	bool Flag_foundFreeSector = false;
@@ -220,9 +255,8 @@ bool VFHPlus::update()
 	double VFHPlusValue_p = _higherThreshold;
 
 	for(; it_measured!=_measuredDistance.end(); it_measured++, it_masked++, it_angle++) {
-		/*
-		   Finding Phi_max and Phi_min
-		*/
+
+		// Finding Phi_max and Phi_min
 		if ((*it_measured - *it_masked) <= 0) {
 			if (*it_angle < 0 && *it_angle > _phi_min) {
 				_phi_min = *it_angle;
@@ -231,13 +265,12 @@ bool VFHPlus::update()
 			}
 		}
 
-		/* 
-		   Calculate VFHPlus value and find free sector
-		*/
+		// Calculate VFHPlus value and find free sector
 		VFHPlusValue = _paraA - (_paraB * (double)(*it_measured));
 
+		// Hysteresis Threshold
 		if ((VFHPlusValue > _lowerThreshold) && (VFHPlusValue < _higherThreshold))
-			VFHPlusValue = VFHPlusValue_p;
+			VFHPlusValue = VFHPlusValue_p; // Set with the previous value
 
 		if (VFHPlusValue <= _lowerThreshold) {
 			if (!Flag_foundFreeSector) {
@@ -255,8 +288,8 @@ bool VFHPlus::update()
 				SectorTemp.end_rho = *(it_measured);
 				SectorTemp.end_angle = *(it_angle);
 				Flag_foundFreeSector = false;
-				if ((SectorTemp.width=_findSectorWidth(SectorTemp)) >= _bodyWidth)
-					_sector.push_back(SectorTemp);
+				//if ((SectorTemp.width=_findSectorWidth(SectorTemp)) >= _bodyWidth)
+				_sector.push_back(SectorTemp);
 			}
 		}
 		VFHPlusValue_p = VFHPlusValue;
@@ -269,8 +302,8 @@ bool VFHPlus::update()
 		SectorTemp.end_rho = *(it_measured-1);
 		SectorTemp.end_angle = *(it_angle-1);
 		Flag_foundFreeSector = false;
-		if ((SectorTemp.width=_findSectorWidth(SectorTemp)) >= _bodyWidth)
-			_sector.push_back(SectorTemp);
+		//if ((SectorTemp.width=_findSectorWidth(SectorTemp)) >= _bodyWidth)
+		_sector.push_back(SectorTemp);
 	}
 
 	/* Adding width */
@@ -319,7 +352,8 @@ double VFHPlus::calculateDirection(double targetDirection)
 		}
 	}
 	*/
-	/* Paper's way */
+
+	/* Paper's way
 	for(it=_sector.begin(); it!=_sector.end(); it++) {
 		if (it->start_angle > it->end_angle) {
 			continue;
@@ -330,7 +364,23 @@ double VFHPlus::calculateDirection(double targetDirection)
 				candidateAngle.push_back(targetRad);
 		}
 	}
-	
+	*/
+
+	/* Take the width of sector into account */
+	for(it=_sector.begin(); it!=_sector.end(); it++) {
+		if (it->start_angle > it->end_angle) {
+			continue;
+		} else {
+			if ((it->end_angle - it->start_angle) <= _angleThreshold) {
+				candidateAngle.push_back((it->start_angle + it->end_angle) / 2.0);
+			} else {
+				candidateAngle.push_back(it->start_angle);
+				candidateAngle.push_back(it->end_angle);
+				if (targetRad > it->start_angle && targetRad < it->end_angle)
+					candidateAngle.push_back(targetRad);
+			}
+		}
+	}
 
 	// Calculate cost function
 	std::vector<double>::iterator it_a;
@@ -341,7 +391,7 @@ double VFHPlus::calculateDirection(double targetDirection)
 		if (*it_a > _phi_min && *it_a < _phi_max) {
 			double targetDiff = fabs(_unwrapRad(targetRad - *it_a)) / M_PI;
 			double currentDiff = fabs(*it_a) / M_PI;
-			double lastDiff = fabs(_lastDirection - *it_a) / M_PI;
+			double lastDiff = fabs(_lastSteer - *it_a) / M_PI;
 			double value = (_u1 * targetDiff) + (_u2 * currentDiff) + (_u3 * lastDiff);
 			if (value < minValue) {
 				minValue = value;
@@ -353,9 +403,24 @@ double VFHPlus::calculateDirection(double targetDirection)
 	if (minValue == 1.0) {
 		return 10000;
 	} else {
-		_lastDirection = preferDirection;
+		_lastSteer = preferDirection;
 		return (preferDirection * (180 / M_PI));
 	}
+}
+
+bool VFHPlus::collisionDetected()
+{
+	std::vector<long>::iterator it_c;
+	std::vector<long>::iterator it_d;
+
+	for (it_d=_measuredDistance.begin(),it_c=_collisionDistance.begin();
+	     it_d != _measuredDistance.end();
+	     it_d++, it_c++) {
+		if (*it_d < *it_c)
+			return true;
+	}
+
+	return false;
 }
 
 double VFHPlus::getDensity()
@@ -383,6 +448,11 @@ void VFHPlus::getMeasuredDistance(std::vector<long> &data, long *timestamp)
 	data = _measuredDistance;
 	if (timestamp)
 		*timestamp = _urgTimeStamp;
+}
+
+void VFHPlus::getCorrespondAngle(std::vector<double> &data)
+{
+	data = _correspondAngle;
 }
 
 inline double VFHPlus::_findSectorWidth(struct Sector s)
