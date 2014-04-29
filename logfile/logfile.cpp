@@ -170,6 +170,14 @@ int LogFile::open(string path)
 	return 0;
 }
     
+bool LogFile::isOpen()
+{
+	if (_stream)
+		return true;
+	else
+		return false;
+}
+
 int LogFile::write(const char *fmt, ...)
 {
 	if (!_stream) 

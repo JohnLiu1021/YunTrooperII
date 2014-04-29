@@ -32,6 +32,7 @@ public:
 	int open();
 	int open(const char *);
 	int open(string);
+	bool isOpen();
 
 	int write(const char *, ...);
 	int writeErr(const char *, int errnum);
