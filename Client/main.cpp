@@ -13,7 +13,8 @@
 
 #include <GeographicLib/Geodesic.hpp>
 
-#define POS_ERR 1
+#define MTIG_FREQ 20
+
 /* Atomic quit bit */
 std::atomic_char quit(0);
 
@@ -31,6 +32,7 @@ struct MTiGData {
 	double latitude;
 	double longitude;
 	double yaw;
+	CmtGpsStatus gpsStatus;
 };
 
 class Config : public Configuration
@@ -39,7 +41,11 @@ public:
 	Config()
 	{
 		struct Option optionTemp;
-		
+	
+		optionTemp.name = "PositionError";
+		optionTemp.value = 1;
+		this->options.push_back(optionTemp);
+
 		optionTemp.name = "MaxSpeed";
 		optionTemp.value = 75;
 		this->options.push_back(optionTemp);
@@ -47,7 +53,6 @@ public:
 		optionTemp.name = "MinSpeed";
 		optionTemp.value = 40;
 		this->options.push_back(optionTemp);
-
 
 		optionTemp.name = "SteeringGain";
 		optionTemp.value = 4;
@@ -59,6 +64,18 @@ public:
 
 		optionTemp.name = "LowThreshold";
 		optionTemp.value = 0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "AngleThreshold";
+		optionTemp.value = 30.0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "CollisionDetectingAngle";
+		optionTemp.value = 50.0;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "CollisionDetectingDistance";
+		optionTemp.value = 500.0;
 		this->options.push_back(optionTemp);
 
 		optionTemp.name = "A";
@@ -119,30 +136,34 @@ void *GPSRead(void *ptr)
 		quit.store(1, std::memory_order_relaxed);
 	}
 
-	/* Set MTiG scenario */
-	if (serial.setScenario(1) != XRV_OK) {
+	/* Set MTiG scenario
+	 * 1: General
+	 * 2: Automotive
+	 */
+	if (serial.setScenario(2) != XRV_OK) {
 		syslog.write("Error: MTiG: %d occured during set scenario: %s\n",
 			serial.getLastResult(),
 			xsensResultText(serial.getLastResult()));
 		quit.store(1, std::memory_order_relaxed);
 	}
 	
-	CmtDeviceMode mode(CMT_OUTPUTMODE_STATUS |
+	CmtDeviceMode2 mode(CMT_OUTPUTMODE_STATUS |
 			   CMT_OUTPUTMODE_ORIENT |
-			   CMT_OUTPUTMODE_POSITION |
-			   CMT_OUTPUTMODE_GPSPVT_PRESSURE,
+			   CMT_OUTPUTMODE_POSITION,
 
 			   CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT |
 			   CMT_OUTPUTSETTINGS_ORIENTMODE_EULER |
-			   CMT_OUTPUTSETTINGS_DATAFORMAT_FP1632, 
-			   20);
-	if (serial.setDeviceMode(mode, false, CMT_DID_BROADCAST)) {
+			   CMT_OUTPUTSETTINGS_DATAFORMAT_FP1632);
+
+	mode.setSampleFrequency(MTIG_FREQ);
+
+	if (serial.setDeviceMode2(mode, false, CMT_DID_BROADCAST)) {
 		syslog.write("Error: MTiG: %d occured during set device mode: %s\n",
 			serial.getLastResult(),
 			xsensResultText(serial.getLastResult()));
-		quit.store(1, std::memory_order_relaxed);
+		quit = true;
 	}
-	
+
 	CmtMatrix matrix;
 	matrix.m_data[0][0] = -1;
 	matrix.m_data[1][1] = -1;
@@ -161,20 +182,55 @@ void *GPSRead(void *ptr)
 		quit.store(1, std::memory_order_relaxed);
 	}
 
+	XsensResultValue XRet;
+	int MTiGErrorCounter = 0;
+
 	while (!quit.load(std::memory_order_relaxed)) {
-		if (serial.waitForDataMessage(&reply) != XRV_OK) {
-			syslog.write("Error: MTiG: %d occured during read data message: %s\n",
-				serial.getLastResult(),
-				xsensResultText(serial.getLastResult()));
-			quit.store(1, std::memory_order_relaxed);
+		XRet = serial.waitForDataMessage(&reply);
+		if (XRet != XRV_OK) {
+			if (XRet == XRV_TIMEOUT) {
+				MTiGErrorCounter++;
+				syslog.write("Warning: MTiG: Timeout occurred, %d times\n", MTiGErrorCounter);
+				if (MTiGErrorCounter >= 10) {
+					syslog.write("Error: MTiG: Too many error.\n");
+					quit.store(1, std::memory_order_relaxed);
+				}
+			} else {
+				syslog.write("Error: MTiG: %d occured during read data message: %s\n",
+					serial.getLastResult(),
+					xsensResultText(serial.getLastResult()));
+				quit.store(1, std::memory_order_relaxed);
+			}
 		}
+
+		CmtGpsStatus gpsStatus;
+		XRet = serial.getGpsStatus(gpsStatus);
+		if (XRet != XRV_OK) {
+			if (XRet == XRV_TIMEOUT) {
+				MTiGErrorCounter++;
+				syslog.write("Warning: MTiG: Timeout occurred, %d times\n", MTiGErrorCounter);
+				if (MTiGErrorCounter >= 10) {
+					syslog.write("Error: MTiG: Too many error.\n");
+					quit.store(1, std::memory_order_relaxed);
+				}
+			} else {
+				syslog.write("Error: MTiG: %d occured during read GPS status: %s\n",
+					serial.getLastResult(),
+					xsensResultText(serial.getLastResult()));
+				quit.store(1, std::memory_order_relaxed);
+			}
+		}
+
+		MTiGErrorCounter = 0;
 		pthread_mutex_lock(&(data->mutex));
 		data->status = reply.getStatus();
 		data->yaw = reply.getOriEuler().m_yaw;
 		data->latitude = reply.getPositionLLA().m_data[0];
 		data->longitude = reply.getPositionLLA().m_data[1];
+		data->gpsStatus = gpsStatus;
 		pthread_mutex_unlock(&(data->mutex));
 	}
+
 	pthread_exit(NULL);
 }
 
@@ -204,7 +260,11 @@ int main(void)
 
 	// Setting deadzone
 	speedPara.deadzone = 10;
-	steerPara.deadzone = 20;
+
+	// Setting the range of speed parameter
+	speedPara.range = 320000;
+
+	steerPara.deadzone = 10;
 	drive.setSpeedParameter(speedPara);
 	drive.setSteerParameter(steerPara);
 
@@ -217,19 +277,20 @@ int main(void)
 	BBB::GPIO btn2(67, 0);
 
 	/* Creating GPS reading thread */
-	struct MTiGData gpsData;
-	pthread_mutex_init(&(gpsData.mutex), NULL);
+	struct MTiGData MData;
+	pthread_mutex_init(&(MData.mutex), NULL);
 	pthread_t thread;
-	if (pthread_create(&thread, NULL, GPSRead, (void*)&gpsData) < 0) {
+	if (pthread_create(&thread, NULL, GPSRead, (void*)&MData) < 0) {
 		syslog.write("Error: Main: Thread Creation failed : %s\n", strerror(errno));
 		quit.store(1, std::memory_order_relaxed);
 	}
 
 	/* Configuration class and variable */
 	Config config;
-	double MaxSpeed;
-	double MinSpeed;
-	double SteeringGain;
+	double PositionError = 1;
+	double MaxSpeed = 80;
+	double MinSpeed = 55;
+	double SteeringGain = 3.5;
         
 	/* VFH, LiDAR and configuration. */
 	VFHPlus vfh;
@@ -237,15 +298,18 @@ int main(void)
 		syslog.write("Error: Main: Unable to open LiDAR: %s\n", vfh.what());
 		quit.store(1, std::memory_order_relaxed);
 	} else {
-		vfh.setScanningParameter(-120, 120, 4);
+	;	vfh.setScanningParameter(-120, 120, 4);
         
-		if (config.readFromFile("VFH.conf") < 0) {
+		if (config.readFromFile("Navigation.conf") < 0) {
 			syslog.write("Config file does not exist, using default config and create it.\n");
-			config.writeToFile("VFH.conf");
+			config.writeToFile("Navigation.conf");
 		}
         
 		double value1, value2, value3;
         
+		if (config.search("PositionError", value1))
+			PositionError = value1;
+
 		if (config.search("MaxSpeed", value1))
 			MaxSpeed = value1;
         
@@ -268,6 +332,18 @@ int main(void)
 		if (config.search("DensityThreshold", value1)) {
 			vfh.setDensityThreshold(value1);
 			syslog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
+		}
+        
+		if (config.search("AngleThreshold", value1)) {
+			vfh.setAngleThreshold(value1);
+			syslog.write("AngleThreshold: %f\n", vfh.getAngleThreshold());
+		}
+
+		if (config.search("CollisionDetectingAngle", value1) &&
+		    config.search("CollisionDetectingDistance", value2)) {
+			vfh.setCollisionArea(value1, value2);
+			vfh.getCollisionArea(value1, value2);
+			syslog.write("Collision Area: %f %f\n", value1, value2); 
 		}
         
 		if (config.search("A", value1) &&
@@ -301,14 +377,16 @@ int main(void)
 	/* Path point class */
 	PathPoints path;
 
-	/* Debug!!! */
+	// Debug section
+#ifdef DEBUG
 	path.add(23.69481, 120.53631);
 	path.add(23.69482, 120.53632);
 	path.add(23.69483, 120.53633);
+#endif
 
 	/* Error counter */
 	int cmdErrorCounter = 0;
-	int vfhErrorCounter = 0;
+	int URGErrorCounter = 0;
 
 	/* Navigation toggle flag */
 	bool navigationStart = false;
@@ -330,27 +408,29 @@ int main(void)
 			syslog.write("Error: Main: start LRF measuremnet.\n");
 			vfh.start_measurement(Urg_driver::Distance);
 			syslog.write("Error: Main: LRF measurement started.\n");
-			vfhErrorCounter++;
+			URGErrorCounter++;
 		} else {
-			vfhErrorCounter = 0;
+			URGErrorCounter = 0;
 		}
 		
 		// Read data from gps thread
-		pthread_mutex_lock(&(gpsData.mutex));
-		unsigned char gpsStatus = gpsData.status;
-		double yaw = gpsData.yaw;
-		double latMeasured = gpsData.latitude;
-		double lonMeasured = gpsData.longitude;
-		pthread_mutex_unlock(&(gpsData.mutex));
+		pthread_mutex_lock(&(MData.mutex));
+		unsigned char statusBit = MData.status;
+		double yaw = MData.yaw;
+		double latMeasured = MData.latitude;
+		double lonMeasured = MData.longitude;
+		CmtGpsStatus gpsStatus = MData.gpsStatus;
+		pthread_mutex_unlock(&(MData.mutex));
 
-		/* Debug!!! */
+		// Debug section
+#ifdef DEBUG
 		yaw = 0.0;
 		latMeasured = 23.6948;
 		lonMeasured = 120.5363;
-		
+#endif
 
 		/* Check the status of gps. If status OK, turn led2 on. */
-		if (gpsStatus == 7)
+		if (statusBit == 7)
 			led2.value(1);
 		else
 			led2.value(0);
@@ -361,10 +441,6 @@ int main(void)
 			drive.setSteer(0);
 			drive.setSpeed(0);
 			navigationStart = false;
-
-			// Reset steering deadzone
-			steerPara.deadzone = 20;
-			drive.setSteerParameter(steerPara);
 
 			continue;
 		}
@@ -423,7 +499,7 @@ int main(void)
 			packet.field.latitude = latMeasured;
 			packet.field.longitude = lonMeasured;
 			packet.field.yaw = yaw;
-			packet.field.statusBit = gpsStatus;
+			packet.field.statusBit = statusBit;
 			if (navigationStart) {
 				packet.field.statusBit |= 0x08;
 			} else {
@@ -431,6 +507,13 @@ int main(void)
 			}
 			packet.field.totalPathPointNumber = path.size();
 			packet.field.pathPointNumber = (unsigned char)(path.getCurrentIndex() + 1);
+			communicator.sendCommand(&packet);
+			break;
+
+		case ASK_GPSSTATUS:
+			syslog.write("System: Asking GPS Status\n");
+			packet.field.packetType = ACK_GPSSTATUS;
+			packet.field.gpsStatus = gpsStatus;
 			communicator.sendCommand(&packet);
 			break;
 
@@ -444,10 +527,6 @@ int main(void)
 					syslog.write("System: Start navigation.\n");
 					packet.field.packetType = ACK_OK;
 
-					// Set smaller steering deadzone
-					steerPara.deadzone = 10;
-					drive.setSteerParameter(steerPara);
-
 					packet.field.statusBit |= 0x08;
 					navigationStart = true;
 				}
@@ -456,10 +535,6 @@ int main(void)
 				syslog.write("System: Stop navigation.\n");
 				packet.field.packetType = ACK_OK;
 				navigationStart = false;
-
-				// Reset steering deadzone
-				steerPara.deadzone = 20;
-				drive.setSteerParameter(steerPara);
 
 				navlog.write("\n\n");
 				packet.field.statusBit &= ~0x08;
@@ -559,22 +634,22 @@ int main(void)
 
 			/* Calculate geodesic distance and azimuth using GeographicLib */
 			geod.Inverse(latMeasured, lonMeasured, latTarget, lonTarget, distance, azi1, azi2);
-			if (distance < POS_ERR) {
+			if (distance < PositionError) {
 				/* Read the next target coor. */
 				if (path.getNext(latTarget, lonTarget) == -1) { // Reached the final
 					syslog.write("System: Reaching the final path point, stop navigation and close the navigation log.\n");
-					path.setCurrentIndex(0);
+					path.setCurrentIndex(-1);
 					navigationStart = false;
 					
-					// Reset steering deadzone
-					steerPara.deadzone = 20;
-					drive.setSteerParameter(steerPara);
-
 					navlog.close();
 					continue;
 				}
 			}
-				
+			
+			/* Since azimuth is measured clockwise from meridian,
+			 * it has to multiply by -1 in order to fit the coordinate system
+			 * in Yun-Trooper II.
+			 */	
 			directionError = (-azi1) - yaw;
 				
 			/* IMPORTANT!!!! Unwrap the angle */
@@ -585,18 +660,22 @@ int main(void)
 
 			/* VFH Plus algorithm */
 			commandAngle = vfh.calculateDirection(directionError);
-			if (commandAngle > 180) { // All directions are blocked or error occurred
-				speedValue = 0;	
-				steerValue = 0;
-				led1.toggle();
-			} else {
+			if (commandAngle <= 180) { // All directions are blocked or error occurred
 				steerValue = commandAngle * SteeringGain;
-				speedValue = (MaxSpeed - MinSpeed) * (1 - vfh.getDensity()) + MinSpeed;
+				speedValue = MaxSpeed * (1 - vfh.getDensity());
+				if (speedValue < MinSpeed)
+					speedValue = MinSpeed;
 				led1.value(1);
+			} else if (vfh.collisionDetected()) { // No other way to go and detected collision.
+				steerValue = 0;
+				speedValue = 0;
+				led1.toggle();
+			} else { // No other way to go but not yet collide with obstacles.
+				speedValue = MinSpeed;
 			}
 	
 			/* VFH Error! */
-			if (vfhErrorCounter >= 10) {
+			if (URGErrorCounter >= 10) {
 				speedValue = 0;
 				steerValue = 0;
 			}
@@ -609,8 +688,8 @@ int main(void)
 				     lonTarget,                  // 4 -> lon. of target
 				     latMeasured,                // 5 -> lat. of current pos.
 				     lonMeasured,                // 6 -> lon. of current pos.
-				     directionError,             // 7 -> target direction
-				     yaw,                        // 8 -> current direction(yaw angle)
+				     yaw,                        // 7 -> current direction(yaw angle)
+				     commandAngle,               // 8 -> direction calculated by VFH algorithm
 				     speedValue,                 // 9 -> speed value
 				     steerValue);                //10 -> steer value
 			navlog.flush();

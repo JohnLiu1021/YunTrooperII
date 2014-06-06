@@ -1,5 +1,5 @@
 CC=arm-unknown-linux-gnueabi-g++
-CFLAGS=-I/usr/local/include/urg_cpp -I/home/john/Documents/Program_YunTrooperII -Wall
+CFLAGS=-I/usr/local/include -I/home/john/Documents/Program_YunTrooperII -Wall
 LFLAGS=-lpthread -lurg_cpp
 
 VFHNavigation : main.cpp

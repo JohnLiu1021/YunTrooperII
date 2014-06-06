@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <signal.h>
-#include <Urg_driver.h>
 #include "drive/drive.h"
 #include "drive/gpio.h"
 #include "MTiG/cmt3.h"
@@ -302,7 +301,6 @@ int main(void)
 				targetOrientation = yaw;
 				flag_startNav = true;
 
-				/*
 				laserLog.open();
 				std::vector<double> angle;
 				std::vector<double>::iterator it;
@@ -312,13 +310,10 @@ int main(void)
 				for (it=angle.begin(); it!=angle.end(); it++)
 					laserLog.write("%3.4f ", *it);
 				laserLog.write("\n");
-
-				sleep(5);
-				*/
 			} else {
 				targetOrientation = 0.0;
 				flag_startNav = false;
-				//laserLog.close();
+				laserLog.close();
 			}
 		}
 
@@ -356,14 +351,12 @@ int main(void)
 				*/
 			}
 
-			/*
 			std::vector<long> data;
 			std::vector<long>::iterator it;
 			vfh.getMeasuredDistance(data);
 			for (it=data.begin(); it!=data.end(); it++)
 				laserLog.write("%4d ", *it);
 			laserLog.write("%3.2f %3.2f\n", target_local, commandAngle);
-			*/
 		} else {
 			led1.value(0);
 			drive.setSpeed(0);

@@ -71,7 +71,7 @@ void YT::Drive::setSpeed(int value)
 
 void YT::Drive::_init(void)
 {
-	_steer.open("1A", 500);
+	_steer.open("1A", 50);
 	_speed.open("2A", 1000);
 	_steer.setDutyNs(0);
 	_speed.setDutyNs(0);
