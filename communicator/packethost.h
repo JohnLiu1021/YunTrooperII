@@ -79,6 +79,12 @@ public:
 			rawData[4] = (unsigned char)field.pathPointNumber;
 			break;
 
+		case SET_YAWOFFSET:
+			addDatanumber(8);
+			addPacketType(SET_YAWOFFSET);
+			memcpy(rawData+4, &(field.yaw), 8);
+			break;
+
 		default:
 			return -1;
 		}

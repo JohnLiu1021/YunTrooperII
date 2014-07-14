@@ -14,6 +14,7 @@
 #include <GeographicLib/Geodesic.hpp>
 
 #define MTIG_FREQ 20
+//#define DEBUG 1
 
 /* Atomic quit bit */
 std::atomic_char quit(0);
@@ -70,12 +71,8 @@ public:
 		optionTemp.value = 30.0;
 		this->options.push_back(optionTemp);
 
-		optionTemp.name = "CollisionDetectingAngle";
-		optionTemp.value = 50.0;
-		this->options.push_back(optionTemp);
-
-		optionTemp.name = "CollisionDetectingDistance";
-		optionTemp.value = 500.0;
+		optionTemp.name = "CollisionDistance";
+		optionTemp.value = 450.0;
 		this->options.push_back(optionTemp);
 
 		optionTemp.name = "A";
@@ -106,9 +103,10 @@ public:
 		optionTemp.value = 0.3;
 		this->options.push_back(optionTemp);
 
-		optionTemp.name = "DensityThreshold";
-		optionTemp.value = 450;
+		optionTemp.name = "DensityRange";
+		optionTemp.value = 45;
 		this->options.push_back(optionTemp);
+
 	}
 };
 
@@ -170,6 +168,19 @@ void *GPSRead(void *ptr)
 	matrix.m_data[2][2] = 1;
 	if (serial.setObjectAlignmentMatrix(matrix) != XRV_OK) {
 		syslog.write("Error: MTiG: %d occured during set alignment matrix: %s\n",
+			serial.getLastResult(),
+			xsensResultText(serial.getLastResult()));
+		quit.store(1, std::memory_order_relaxed);
+	}
+	
+	CmtVector v;
+	/* GPS lever arm vector on object coor. */
+	v.m_data[0] = -0.197;
+	v.m_data[1] = 0.057;
+	v.m_data[2] = 0.14;
+
+	if (serial.setGpsLeverArm(v) != XRV_OK) {
+		syslog.write("Error: MTiG: %d occured during set GPS lever arm: %s\n",
 			serial.getLastResult(),
 			xsensResultText(serial.getLastResult()));
 		quit.store(1, std::memory_order_relaxed);
@@ -291,6 +302,7 @@ int main(void)
 	double MaxSpeed = 80;
 	double MinSpeed = 55;
 	double SteeringGain = 3.5;
+	double YawOffset = 0.0;
         
 	/* VFH, LiDAR and configuration. */
 	VFHPlus vfh;
@@ -329,9 +341,9 @@ int main(void)
 			syslog.write("BodyWidth: %d\n", vfh.getBodyWidth());
 		}
         
-		if (config.search("DensityThreshold", value1)) {
-			vfh.setDensityThreshold(value1);
-			syslog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
+		if (config.search("DensityRange", value1)) {
+			vfh.setDensityRange(value1);
+			syslog.write("DensityRange: %f\n", vfh.getDensityRange());
 		}
         
 		if (config.search("AngleThreshold", value1)) {
@@ -339,11 +351,10 @@ int main(void)
 			syslog.write("AngleThreshold: %f\n", vfh.getAngleThreshold());
 		}
 
-		if (config.search("CollisionDetectingAngle", value1) &&
-		    config.search("CollisionDetectingDistance", value2)) {
-			vfh.setCollisionArea(value1, value2);
-			vfh.getCollisionArea(value1, value2);
-			syslog.write("Collision Area: %f %f\n", value1, value2); 
+		if (config.search("CollisionDistance", value1)) {
+			vfh.setCollisionDistance(value1);
+			value1 = vfh.getCollisionDistance();
+			syslog.write("Collision Distance: %f\n", value1); 
 		}
         
 		if (config.search("A", value1) &&
@@ -367,7 +378,7 @@ int main(void)
 			syslog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
 		}
         
-		/* Configuration of LiDAR is done, start measurement */
+		/* Configuration is done, start measurement */
 		vfh.start();
 	}
 
@@ -392,8 +403,16 @@ int main(void)
 	bool navigationStart = false;
 
 	/* Temp. Variable */
+	bool updated = false;
+	double latUpdated, lonUpdated;
+
 	int speedValue = 0;
 	int steerValue = 0;
+	int steerValue_p = 0;
+	double latTarget, lonTarget;
+	double distance, azi1, azi2;
+	double directionError;
+	double commandAngle;
 
 	/* Entering main loop */
 	while(!quit.load(std::memory_order_relaxed)) {
@@ -498,6 +517,9 @@ int main(void)
 			packet.field.packetType = ACK_STATUS;
 			packet.field.latitude = latMeasured;
 			packet.field.longitude = lonMeasured;
+			updated = true;
+			latUpdated = latMeasured;
+			lonUpdated = lonMeasured;
 			packet.field.yaw = yaw;
 			packet.field.statusBit = statusBit;
 			if (navigationStart) {
@@ -580,15 +602,21 @@ int main(void)
 			break;
 
 		case ADD_PATH:
-			syslog.write("System: Adding path point: %3.7f, %3.7f, total path number = %d\n", 
-				packet.field.latitude,
-				packet.field.longitude,
-				path.size());
+			if (updated) {
+				updated = false;
+				syslog.write("System: Adding path point: %3.7f, %3.7f, total path number = %d\n", 
+					latUpdated,
+					lonUpdated,
+					path.size());
 
-			path.add(packet.field.latitude, packet.field.longitude);
+				path.add(latUpdated, lonUpdated);
+				packet.field.packetType = ACK_OK;
+				packet.field.totalPathPointNumber = path.size();
+			} else {
+				syslog.write("System: Path point are not updated, aborted.\n");
+				packet.field.packetType = ACK_NOK;
+			}
 
-			packet.field.packetType = ACK_OK;
-			packet.field.totalPathPointNumber = path.size();
 			communicator.sendCommand(&packet);
 			break;
 
@@ -604,6 +632,13 @@ int main(void)
 			communicator.sendCommand(&packet);
 			break;
 
+		case SET_YAWOFFSET:
+			syslog.write("System: Setting yaw angle offset: %f\n", packet.field.yaw);
+			YawOffset = packet.field.yaw;
+			packet.field.packetType = ACK_OK;
+			communicator.sendCommand(&packet);
+			break;
+
 		default:
 			break;
 		}
@@ -616,11 +651,6 @@ int main(void)
 		if (navigationStart) {
 			/* Reset Command Error counter */
 			cmdErrorCounter = 0;
-
-			double latTarget, lonTarget;
-			double distance, azi1, azi2;
-			double directionError;
-			double commandAngle;
 
 			/* For the first time */
 			if (path.getCurrentIndex() == -1) {
@@ -650,8 +680,9 @@ int main(void)
 			 * it has to multiply by -1 in order to fit the coordinate system
 			 * in Yun-Trooper II.
 			 */	
-			directionError = (-azi1) - yaw;
-				
+		
+			printf("Yaw + YawOffset = %f\n", yaw + YawOffset);
+			directionError = (-azi1) - (yaw + YawOffset);
 			/* IMPORTANT!!!! Unwrap the angle */
 			if (directionError > 180)
 				directionError -= 360;
@@ -660,26 +691,44 @@ int main(void)
 
 			/* VFH Plus algorithm */
 			commandAngle = vfh.calculateDirection(directionError);
-			if (commandAngle <= 180) { // All directions are blocked or error occurred
-				steerValue = commandAngle * SteeringGain;
-				speedValue = MaxSpeed * (1 - vfh.getDensity());
-				if (speedValue < MinSpeed)
-					speedValue = MinSpeed;
-				led1.value(1);
-			} else if (vfh.collisionDetected()) { // No other way to go and detected collision.
-				steerValue = 0;
-				speedValue = 0;
-				led1.toggle();
-			} else { // No other way to go but not yet collide with obstacles.
-				speedValue = MinSpeed;
+
+			if (commandAngle <= 180) { // c_t is available
+				steerValue_p = steerValue;
+				steerValue = (int)(commandAngle * SteeringGain);
+				speedValue = (int)((MaxSpeed - MinSpeed) * (1.0 - vfh.getDensity()) + MinSpeed);
+			} else { // c_t is not available
+				speedValue = (int)MinSpeed;
+				steerValue = steerValue_p;
 			}
-	
+
+			// Collision detected
+			if (vfh.collisionDetected(((double)steerValue) / SteeringGain))
+				speedValue = 0;
+
 			/* VFH Error! */
 			if (URGErrorCounter >= 10) {
 				speedValue = 0;
 				steerValue = 0;
 			}
 
+			if (commandAngle > 180)
+				led1.toggle();
+			else
+				led1.value(1);
+#ifdef DEBUG
+			printf("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d,%3f\n",
+				     path.getCurrentIndex()+1,	 // 1 -> current path number
+				     path.size(),                // 2 -> total path number
+				     latTarget,                  // 3 -> lat. of target
+				     lonTarget,                  // 4 -> lon. of target
+				     latMeasured,                // 5 -> lat. of current pos.
+				     lonMeasured,                // 6 -> lon. of current pos.
+				     yaw,                        // 7 -> current direction(yaw angle)
+				     commandAngle,               // 8 -> direction calculated by VFH algorithm
+				     speedValue,                 // 9 -> speed value
+				     steerValue,                //10 -> steer value
+				     directionError);
+#else	
 			/* Record all data during navigation */
 			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d\n",
 				     path.getCurrentIndex()+1,	 // 1 -> current path number
@@ -690,9 +739,11 @@ int main(void)
 				     lonMeasured,                // 6 -> lon. of current pos.
 				     yaw,                        // 7 -> current direction(yaw angle)
 				     commandAngle,               // 8 -> direction calculated by VFH algorithm
-				     speedValue,                 // 9 -> speed value
-				     steerValue);                //10 -> steer value
+				     directionError,		 // 9 -> direction error
+				     speedValue,                 //10 -> speed value
+				     steerValue);                //11 -> steer value
 			navlog.flush();
+#endif
 		} else {
 			led1.value(0);
 		}

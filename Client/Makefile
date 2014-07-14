@@ -5,5 +5,5 @@ LFLAGS=-lpthread -lurg_cpp -lGeographic
 Client : main.cpp
 	$(CC) $(CFLAGS) $(LFLAGS) main.cpp ../PathPoints/pathpoints.cpp ../communicator/communicator.cpp ../communicator/ringbuffer.cpp ../MTiG/libcmt.a ../drive/drive.cpp ../drive/gpio.cpp ../drive/pwm.cpp ../VFHPlus/vfhplus.cpp ../logfile/logfile.cpp ../Configuration/configuration.cpp -o ~/Documents/BeagleBoneBlack/share/Program/Client
 
-clean:
+clean :
 	rm -f ~/Documents/BeagleBoneBlack/share/Program/Client

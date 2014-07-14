@@ -28,8 +28,8 @@ public:
 	void getCostFuncParameter(double *u1, double *u2, double *u3);
 
 	// Set the threshold distance of density counter.
-	void setDensityThreshold(const int mm);
-	int getDensityThreshold();
+	void setDensityRange(const double deg);
+	double getDensityRange();
 
 	// Set danger distance which is considered too close to the sensor, in millimeter.
 	void setBodyWidth(const int mm);
@@ -39,11 +39,9 @@ public:
 	void setAngleThreshold(const double deg);
 	double getAngleThreshold();
 
-	// Set the fan collision detecting area with spanning angle and distance
-	void setCollisionArea(const double deg, const double distance);
-	void setCollisionArea(std::vector<long> v);
-	void getCollisionArea(double *deg, double *distance);
-	void getCollisionArea(double &deg, double &distance);
+	// Set the collision detecting distance
+	void setCollisionDistance(const double distance);
+	double getCollisionDistance();
 
 	// Set radius of curvature
 	void setRadiusOfCurvature(double radius);
@@ -67,7 +65,7 @@ public:
 	double calculateDirection(double targetDirection);
 
 	// Detect possible collision
-	bool collisionDetected();
+	bool collisionDetected(double direction = 0);
 
 	// Ask for the density value, which is between 0 and 1.
 	double getDensity();
@@ -91,8 +89,8 @@ private:
 	// Paremeter of weighting function
 	double _u1, _u2, _u3;
 
-	// Threshold of environment density calculation
-	int _densityThreshold;
+	// Density range of environment density calculation
+	double _densityRange;
 
 	// Body width
 	int _bodyWidth;
@@ -104,8 +102,7 @@ private:
 	double _angleThreshold; 
 
 	// Angle and distance parameter of collision detecting area
-	double _spanningAngle;
-	double _extendedDistance;
+	double _collisionDist;
 
 	// Scanning Parameter of laser range finder
 	double _minAngle;
@@ -135,8 +132,9 @@ private:
 
 	std::vector<long> _measuredDistance;
 	std::vector<double> _correspondAngle;
-	std::vector<long> _maskedDistance;
-	std::vector<long> _collisionDistance;
+	std::vector<long> _blockedDistance;
+
+	std::vector<long> _densityPrevious;
 
 	inline double _findSectorWidth(struct Sector);
 	inline double _unwrapRad(double rad);

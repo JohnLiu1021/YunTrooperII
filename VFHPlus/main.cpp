@@ -13,6 +13,8 @@
 
 #define EXIT_ERROR(X) {VFHlog.write("Error %d occured during "X": %s\n", serial.getLastResult(), xsensResultText(serial.getLastResult())); exit(EXIT_FAILURE);}
 
+#define DEBUG 1
+
 int quit = 0;
 
 BBB::GPIO led1(69, 1);
@@ -128,12 +130,8 @@ public:
 		optionTemp.value = 30.0;
 		this->options.push_back(optionTemp);
 
-		optionTemp.name = "CollisionDetectingAngle";
-		optionTemp.value = 50.0;
-		this->options.push_back(optionTemp);
-
-		optionTemp.name = "CollisionDetectingDistance";
-		optionTemp.value = 500.0;
+		optionTemp.name = "CollisionDistance";
+		optionTemp.value = 450.0;
 		this->options.push_back(optionTemp);
 
 		optionTemp.name = "A";
@@ -164,8 +162,12 @@ public:
 		optionTemp.value = 0.3;
 		this->options.push_back(optionTemp);
 
-		optionTemp.name = "DensityThreshold";
-		optionTemp.value = 450;
+		optionTemp.name = "DensityRange";
+		optionTemp.value = 45;
+		this->options.push_back(optionTemp);
+
+		optionTemp.name = "LaserLog";
+		optionTemp.value = 0;
 		this->options.push_back(optionTemp);
 	}
 };
@@ -175,6 +177,7 @@ int main(void)
 	if (VFHlog.open("/root/VFHlog"))
 		printf("Erro!\n");
 
+	int laserLogEnabled = 0;
 	LogFile laserLog;
 	laserLog.timeStampOFF();
 	laserLog.counterStampOFF();
@@ -198,9 +201,9 @@ int main(void)
 	}
 
 	VFHConfig config;
-	double MaxSpeed;
-	double MinSpeed;
-	double SteeringGain;
+	double MaxSpeed = 70;
+	double MinSpeed = 40;
+	double SteeringGain = 3.5;
 
 	VFHPlus vfh;
 	if (!vfh.open("/dev/ttyACM0")) {
@@ -235,9 +238,9 @@ int main(void)
 			VFHlog.write("BodyWidth: %d\n", vfh.getBodyWidth());
 		}
         
-		if (config.search("DensityThreshold", value1)) {
-			vfh.setDensityThreshold(value1);
-			VFHlog.write("DensityThreshold: %d\n", vfh.getDensityThreshold());
+		if (config.search("DensityRange", value1)) {
+			vfh.setDensityRange(value1);
+			VFHlog.write("DensityRange: %f\n", vfh.getDensityRange());
 		}
         
 		if (config.search("AngleThreshold", value1)) {
@@ -245,11 +248,10 @@ int main(void)
 			VFHlog.write("AngleThreshold: %f\n", vfh.getAngleThreshold());
 		}
 
-		if (config.search("CollisionDetectingAngle", value1) &&
-		    config.search("CollisionDetectingDistance", value2)) {
-			vfh.setCollisionArea(value1, value2);
-			vfh.getCollisionArea(value1, value2);
-			VFHlog.write("Collision Area: %f %f\n", value1, value2); 
+		if (config.search("CollisionDistance", value1)) {
+			vfh.setCollisionDistance(value1);
+			value1 = vfh.getCollisionDistance();
+			VFHlog.write("Collision Distance: %f\n", value1); 
 		}
         
 		if (config.search("A", value1) &&
@@ -273,16 +275,27 @@ int main(void)
 			VFHlog.write("u1: %f, u2: %f, u3: %f\n", value1, value2, value3);
 		}
         
+		if (config.search("LaserLog", value1)) {
+			laserLogEnabled = (int)value1;
+			VFHlog.write("Laser Log Enabled: %d\n", laserLogEnabled); 
+		}
 		vfh.start();
 	}
 
 	double targetOrientation = 0.0;
 	bool flag_startNav = false;
 	
-	VFHlog.flush();
 
 	int previousBtnStatus = 0;
 	int presentBtnStatus = 0;
+
+	double target_local = 0.0;
+	double commandAngle = 0.0;
+	int speedValue = 0;
+	int steerValue = 0;
+
+	VFHlog.flush();
+
 	while(!quit) {
 		// Update VFH algorithm.
 		vfh.update();
@@ -301,64 +314,83 @@ int main(void)
 				targetOrientation = yaw;
 				flag_startNav = true;
 
-				laserLog.open();
-				std::vector<double> angle;
-				std::vector<double>::iterator it;
-				vfh.getCorrespondAngle(angle);
-				laserLog.write("%d 0\n", angle.size()); // Zero padding
-                        
-				for (it=angle.begin(); it!=angle.end(); it++)
-					laserLog.write("%3.4f ", *it);
-				laserLog.write("\n");
+				if (laserLogEnabled) {
+					laserLog.open();
+					std::vector<double> angle;
+					std::vector<double>::iterator it;
+					vfh.getCorrespondAngle(angle);
+					/* 
+					 * Configuration
+					 * 1. Laser data length
+					 * 2. Robot dimension
+					 * 3. Density range
+					 * 4. Tau_angle
+					*/
+					laserLog.write("%d %d %f %f\n",
+						angle.size(),
+						vfh.getBodyWidth(),
+						vfh.getDensityRange(),
+						vfh.getAngleThreshold());
+                                
+					for (it=angle.begin(); it!=angle.end(); it++)
+						laserLog.write("%3.4f ", *it);
+					laserLog.write("\n");
+				}
 			} else {
 				targetOrientation = 0.0;
 				flag_startNav = false;
-				laserLog.close();
+				if (laserLogEnabled)
+					laserLog.close();
 			}
 		}
 
 		// Navigation
 		if (flag_startNav) {
-			double target_local = targetOrientation - yaw;
+			target_local = targetOrientation - yaw;
 			if (target_local > 180)
 				target_local -= 360;
 			else if (target_local < -180) 
 				target_local += 360;
 
-			double commandAngle = vfh.calculateDirection(target_local);
-			if (commandAngle <= 180) {
-				int speedValue = (1 - vfh.getDensity()) * MaxSpeed;
-				if (speedValue < MinSpeed)
-					speedValue = MinSpeed;
-				drive.setSteer(commandAngle * SteeringGain);
-				drive.setSpeed(speedValue);
-				led1.value(1);
-			} else {
-				if (vfh.collisionDetected()) {
-					drive.setSteer(0);
-					drive.setSpeed(0);
-					led1.toggle();
-					led2.toggle();
-				} else {
-					drive.setSpeed(MinSpeed);
-					led1.toggle();
-					led2.value(1);
-				}
+			commandAngle = vfh.calculateDirection(target_local);
 
-				/* No detection zone!
-				drive.setSpeed(MinSpeed);
-				led1.toggle();
-				*/
+			if (commandAngle <= 180) {
+				double density = vfh.getDensity();
+				printf("density = %f\n", density);
+				speedValue = (int)((MaxSpeed - MinSpeed) * (1.0 - density) + MinSpeed);
+				steerValue = (int)(commandAngle * SteeringGain);
+			} else {
+				speedValue = (int)MinSpeed;
 			}
 
-			std::vector<long> data;
-			std::vector<long>::iterator it;
-			vfh.getMeasuredDistance(data);
-			for (it=data.begin(); it!=data.end(); it++)
-				laserLog.write("%4d ", *it);
-			laserLog.write("%3.2f %3.2f\n", target_local, commandAngle);
+			if (vfh.collisionDetected(((double)steerValue) / SteeringGain))
+				speedValue = 0;
+
+			drive.setSpeed(speedValue);
+			drive.setSteer(steerValue);
+
+			// Status indicator
+			if (commandAngle > 180)
+				led1.toggle();
+			else
+				led1.value(1);
+
+			if (speedValue == 0)
+				led2.toggle();
+			else
+				led2.value(1);
+
+			if (laserLogEnabled) {
+				std::vector<long> data;
+				std::vector<long>::iterator it;
+				vfh.getMeasuredDistance(data);
+				for (it=data.begin(); it!=data.end(); it++)
+					laserLog.write("%4d ", *it);
+				laserLog.write("%3.2f %3.2f %d %d\n", target_local, commandAngle, steerValue, speedValue);
+			}
 		} else {
 			led1.value(0);
+			led2.value(1);
 			drive.setSpeed(0);
 			drive.setSteer(0);
 		}
@@ -366,6 +398,7 @@ int main(void)
 		previousBtnStatus = presentBtnStatus;
 			
 	}
+	printf("Ctrl-C received!\n");
 	pthread_join(thread, NULL);
 
 	led2.value(0);

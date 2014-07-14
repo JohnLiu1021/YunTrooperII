@@ -140,6 +140,9 @@ enum PacketType{
 	 * Length = 0
 	*/
 	ASK_GPSSTATUS	= 0xEB,
+
+	/* Setting yaw angle offset */
+	SET_YAWOFFSET	= 0xEF,
 	
 	/* Error Type */
 	ERROR_CMD	= 0xFF

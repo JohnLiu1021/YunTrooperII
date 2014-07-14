@@ -126,6 +126,11 @@ public:
 			field.pathPointNumber = rawData[4];
 			break;
         
+		case SET_YAWOFFSET:
+			field.packetType = SET_YAWOFFSET;
+			memcpy(&(field.yaw), rawData+4, 8);
+			break;
+
 		default:
 			field.packetType = ERROR_CMD;
 			break;
