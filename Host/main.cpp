@@ -48,7 +48,6 @@ int main(void)
 
 	/* Setting up interval timer */
 	struct itimerval delay;
-	StartTimer(delay);
 
 	/* Setting up xbox controller */
 	Controller xbox("/dev/input/js0", NONBLOCK);
@@ -61,12 +60,7 @@ int main(void)
 	PacketType ack;
 	PacketHost packet;
 
-	/* Start the interval timer */
-	if (setitimer(ITIMER_REAL, &delay, NULL)) {
-		perror("set interval timer");
-		exit(EXIT_FAILURE);
-	}
-	
+	StartTimer(delay);	
 	/* Main loop */
 	while(!quit) {
 		pause();
