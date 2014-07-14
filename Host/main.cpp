@@ -1,5 +1,6 @@
 #include <sys/time.h>
 #include <signal.h>
+#include <string.h>
 #include <iostream>
 #include <iomanip>
 
@@ -40,10 +41,12 @@ int main(void)
 {
 	/* Setting up signal handler */
 	struct sigaction act;
-	act.sa_handler = alarm_handler;
+	memset(&act, 0, sizeof(act));
+
+	act.sa_handler = &alarm_handler;
 	sigaction(SIGALRM, &act, NULL);
 
-	act.sa_handler = ctrlc_handler;
+	act.sa_handler = &ctrlc_handler;
 	sigaction(SIGINT, &act, NULL);
 
 	/* Setting up interval timer */
