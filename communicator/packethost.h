@@ -80,7 +80,7 @@ public:
 			break;
 
 		case SET_YAWOFFSET:
-			addDatanumber(8);
+			addDataNumber(8);
 			addPacketType(SET_YAWOFFSET);
 			memcpy(rawData+4, &(field.yaw), 8);
 			break;

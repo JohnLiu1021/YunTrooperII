@@ -283,6 +283,28 @@ int main(void)
 					cout << "\tError: No ack message received...\n";
 				}
 				cout << "\n";
+
+			/* Set yaw angle offset */
+			} else if (btns.AxisRT() > 20000) {
+				cout << "Ask:\tSet yaw offset:\n";
+				packet.field.packetType = SET_YAWOFFSET;
+				scanf("%lf", &(packet.field.yaw));
+				cout << "\n";
+				cout << "Angle :" << packet.field.yaw << "\n";
+
+				communicator.sendCommand(&packet);
+				usleep(PERIOD);
+				ack = communicator.readCommand(&packet);
+
+				cout << "Received:\n";
+				if (ack == ACK_OK) {
+					cout << "\tSuccess: Offset set.\n";
+				} else if (ack == ACK_NOK) {
+					cout << "\tError: Offset not set.\n";
+				} else {
+					cout << "\tError: No ack message received...\n";
+				}
+				cout << "\n";
 			}
 
 			StartTimer(delay);
