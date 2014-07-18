@@ -730,7 +730,7 @@ int main(void)
 				     directionError);
 #else	
 			/* Record all data during navigation */
-			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3d,%3d\n",
+			navlog.write("%02d,%02d,%+3.7f,%+3.7f,%+3.7f,%+3.7f,%+3.4f,%+3.4f,%3.4f,%3d,%3d\n",
 				     path.getCurrentIndex()+1,	 // 1 -> current path number
 				     path.size(),                // 2 -> total path number
 				     latTarget,                  // 3 -> lat. of target
