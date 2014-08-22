@@ -27,7 +27,7 @@ public:
 	void getCostFuncParameter(double &u1, double &u2, double &u3);
 	void getCostFuncParameter(double *u1, double *u2, double *u3);
 
-	// Set the threshold distance of density counter.
+	// Set the angle range of obstacle approaching rate.
 	void setDensityRange(const double deg);
 	double getDensityRange();
 
@@ -35,7 +35,7 @@ public:
 	void setBodyWidth(const int mm);
 	int getBodyWidth();
 
-	// Set the threshold between wide and narrow sector.
+	// Set the threshold of free spaces identification.
 	void setAngleThreshold(const double deg);
 	double getAngleThreshold();
 
@@ -133,6 +133,9 @@ private:
 	std::vector<long> _measuredDistance;
 	std::vector<double> _correspondAngle;
 	std::vector<long> _blockedDistance;
+	std::vector<long> _pHistogram;
+
+	std::vector<bool> _binaryHistogram;
 
 	std::vector<long> _densityPrevious;
 

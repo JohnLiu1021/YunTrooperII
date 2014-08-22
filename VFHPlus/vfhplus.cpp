@@ -27,6 +27,8 @@ VFHPlus::VFHPlus()
 	_measuredDistance.clear();
 	_correspondAngle.clear();
 	_blockedDistance.clear();
+	_pHistogram.clear();
+	_binaryHistogram.clear();
 
 	_sector.clear();
 	_lastSteer = 0.0;
@@ -219,25 +221,28 @@ bool VFHPlus::update()
 			*it = 4000;
 	}
 
-	// Enter the loop of calculation for VFH
-	_sector.clear();
-	struct Sector SectorTemp;
-	bool Flag_foundFreeSector = false;
-
+	// iterator for each vector
 	std::vector<long>::iterator it_measured = _measuredDistance.begin();
 	std::vector<long>::iterator it_blocked = _blockedDistance.begin();
 	std::vector<double>::iterator it_angle = _correspondAngle.begin();
 
+	_pHistogram = _measuredDistance;
+	std::vector<long>::iterator it_p = _pHistogram.begin();
+
+	_binaryHistogram.clear();
+
 	_phi_min = -M_PI;
 	_phi_max = M_PI;
-	double VFHPlusValue;
-	double VFHPlusValue_p = _higherThreshold;
 
 	// Closest distance and correspond angle
 	double closestDist = 4000;
-	double closestAngle = M_PI;;
+	double closestAngle = M_PI;
 
-	for(; it_measured!=_measuredDistance.end(); it_measured++, it_blocked++, it_angle++) {
+	bool binaryHistValue = false;
+	bool binaryHistValue_p = false;
+
+	for(; it_measured!=_measuredDistance.end();
+		it_measured++, it_blocked++, it_angle++, it_p++) {
 		
 		// Find closest distance
 		if (*it_measured < closestDist) {
@@ -255,13 +260,56 @@ bool VFHPlus::update()
 		}
 
 		// Calculate VFHPlus value and find free sector
-		VFHPlusValue = _paraA - (_paraB * (double)(*it_measured));
+		*it_p = _paraA - (_paraB * (double)(*it_measured));
 
-		// Hysteresis Threshold
-		if ((VFHPlusValue > _lowerThreshold) && (VFHPlusValue < _higherThreshold))
-			VFHPlusValue = VFHPlusValue_p; // Set with the previous value
+		// First stage of hysteresis filter
+		if ((*it_p) <= _lowerThreshold) {
+			binaryHistValue = false;
+		} else if ((*it_p) >= _higherThreshold) {
+			binaryHistValue = true;
+		} else {
+			if (it_p == _pHistogram.begin())
+				binaryHistValue = false;
+			else
+				binaryHistValue = binaryHistValue_p;
+		}
 
-		if (VFHPlusValue <= _lowerThreshold) {
+		_binaryHistogram.push_back(binaryHistValue);
+
+		binaryHistValue_p = binaryHistValue;
+	}
+
+	// Second stage of hysteresis filter
+	std::vector<bool>::iterator it_b = _binaryHistogram.end() - 1;
+	it_p = _pHistogram.end() - 1;
+	binaryHistValue = false;
+	binaryHistValue_p = false;
+
+	for (; it_b != (_binaryHistogram.begin() - 1); it_b--, it_p--) {
+		if ((*it_p) <= _lowerThreshold) {
+			binaryHistValue = false;
+		} else if ((*it_p) >= _higherThreshold) {
+			binaryHistValue = true;
+		} else {
+			binaryHistValue = binaryHistValue_p;
+		}
+
+		*it_b = *it_b | binaryHistValue;
+
+		binaryHistValue_p = binaryHistValue;
+	}
+
+	// Find free sector
+	_sector.clear();
+	struct Sector SectorTemp;
+	bool Flag_foundFreeSector = false;
+
+	it_measured = _measuredDistance.begin();
+	it_angle = _correspondAngle.begin();
+	it_b = _binaryHistogram.begin();
+	
+	for (; it_b != _binaryHistogram.end(); it_measured++, it_angle++, it_b++) {
+		if (!(*it_b)) {
 			if (!Flag_foundFreeSector) {
 				Flag_foundFreeSector = true;
 				if (it_measured != _measuredDistance.begin()) {
@@ -272,7 +320,7 @@ bool VFHPlus::update()
 					SectorTemp.start_angle = *it_angle;
 				}
 			}
-		} else if (VFHPlusValue >= _higherThreshold) {
+		} else {
 			if (Flag_foundFreeSector) {
 				SectorTemp.end_rho = *(it_measured);
 				SectorTemp.end_angle = *(it_angle);
@@ -280,12 +328,8 @@ bool VFHPlus::update()
 				_sector.push_back(SectorTemp);
 			}
 		}
-		VFHPlusValue_p = VFHPlusValue;
 	}
-
-	/*
-	   In case the last sector extended all the way to the boundary.
-	*/
+	// In case the last sector extended all the way to the boundary.
 	if (Flag_foundFreeSector) {
 		SectorTemp.end_rho = *(it_measured - 1);
 		SectorTemp.end_angle = *(it_angle - 1);
@@ -331,8 +375,7 @@ bool VFHPlus::update()
 		}
 	}
 
-
-/* Debug
+/*
 	printf("Phi max: %3.2f, Phi min: %3.2f\n", _phi_max*(180/M_PI), _phi_min*(180/M_PI));
 	int i = 0;
 	for (it_temp=_sector.begin(); it_temp!=_sector.end(); it_temp++) {

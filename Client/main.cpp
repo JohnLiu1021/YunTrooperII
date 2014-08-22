@@ -13,7 +13,9 @@
 
 #include <GeographicLib/Geodesic.hpp>
 
+// MTiG sampling frequency
 #define MTIG_FREQ 20
+
 //#define DEBUG 1
 
 /* Atomic quit bit */
@@ -27,15 +29,7 @@ using namespace xsens;
 using namespace qrk;
 using namespace GeographicLib;
 
-struct MTiGData {
-	pthread_mutex_t mutex;
-	unsigned char status;
-	double latitude;
-	double longitude;
-	double yaw;
-	CmtGpsStatus gpsStatus;
-};
-
+/* Configuration class specific for this client program */
 class Config : public Configuration
 {
 public:
@@ -110,7 +104,17 @@ public:
 	}
 };
 
-/* Create a thread to read from MTiG, which implemented the asynchronous read */
+/* Shared data between MTiG reading thread and main thread */
+struct MTiGData {
+	pthread_mutex_t mutex;
+	unsigned char status;
+	double latitude;
+	double longitude;
+	double yaw;
+	CmtGpsStatus gpsStatus;
+};
+
+/* Create a thread to read data from MTiG, which implemented the asynchronous read */
 void *GPSRead(void *ptr)
 {
 	struct MTiGData *data = (struct MTiGData*)ptr;
@@ -138,7 +142,7 @@ void *GPSRead(void *ptr)
 	 * 1: General
 	 * 2: Automotive
 	 */
-	if (serial.setScenario(2) != XRV_OK) {
+	if (serial.setScenario(1) != XRV_OK) {
 		syslog.write("Error: MTiG: %d occured during set scenario: %s\n",
 			serial.getLastResult(),
 			xsensResultText(serial.getLastResult()));
@@ -173,8 +177,8 @@ void *GPSRead(void *ptr)
 		quit.store(1, std::memory_order_relaxed);
 	}
 	
-	CmtVector v;
 	/* GPS lever arm vector on object coor. */
+	CmtVector v;
 	v.m_data[0] = -0.197;
 	v.m_data[1] = 0.057;
 	v.m_data[2] = 0.14;
@@ -245,6 +249,7 @@ void *GPSRead(void *ptr)
 	pthread_exit(NULL);
 }
 
+/* Main thread */
 int main(void)
 {
 	/* Setting up Navigation Log */
@@ -296,7 +301,7 @@ int main(void)
 		quit.store(1, std::memory_order_relaxed);
 	}
 
-	/* Configuration class and variable */
+	/* Configuration and default value */
 	Config config;
 	double PositionError = 1;
 	double MaxSpeed = 80;
@@ -310,7 +315,8 @@ int main(void)
 		syslog.write("Error: Main: Unable to open LiDAR: %s\n", vfh.what());
 		quit.store(1, std::memory_order_relaxed);
 	} else {
-	;	vfh.setScanningParameter(-120, 120, 4);
+		// Configuration of the navigation algorithm
+		vfh.setScanningParameter(-120, 120, 4);
         
 		if (config.readFromFile("Navigation.conf") < 0) {
 			syslog.write("Config file does not exist, using default config and create it.\n");
@@ -419,8 +425,7 @@ int main(void)
 		syslog.flush();
 
 		/* Update VFH algorithm */
-		if (!vfh.update()) {
-			//quit.store(1, std::memory_order_relaxed);
+		if (!vfh.update()) { // Error while updating the VFH algorithm, reset the LiDAR
 			syslog.write("Error: Main: read LRF: %s\n", vfh.what());
 			syslog.write("Error: Main: stop LRF measuremnet.\n");
 			vfh.stop_measurement();
@@ -432,7 +437,7 @@ int main(void)
 			URGErrorCounter = 0;
 		}
 		
-		// Read data from gps thread
+		// Read data from MTiG thread
 		pthread_mutex_lock(&(MData.mutex));
 		unsigned char statusBit = MData.status;
 		double yaw = MData.yaw;
@@ -454,7 +459,7 @@ int main(void)
 		else
 			led2.value(0);
 	
-		/* Emergency Button */
+		/* Detect emergency Button */
 		if (btn1.value() == 1) {
 			syslog.write("System: Emergency Stop\n");
 			drive.setSteer(0);
@@ -464,7 +469,7 @@ int main(void)
 			continue;
 		}
 
-		/* Reading command */
+		/* Reading remote command */
 		PacketType packetType = communicator.readCommand(&packet);
 
 		/* Error command or no data */
@@ -571,7 +576,7 @@ int main(void)
 			syslog.write("System: Reset path point index!\n");
 
 			if (path.setCurrentIndex(-1) == -2) {
-				printf("unable to set index!\n");
+				syslog.write("System: Unable to set index!\n");
 			}
 			navigationStart = false;
 
@@ -680,8 +685,6 @@ int main(void)
 			 * it has to multiply by -1 in order to fit the coordinate system
 			 * in Yun-Trooper II.
 			 */	
-		
-			printf("Yaw + YawOffset = %f\n", yaw + YawOffset);
 			directionError = (-azi1) - (yaw + YawOffset);
 			/* IMPORTANT!!!! Unwrap the angle */
 			if (directionError > 180)
